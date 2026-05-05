@@ -30,6 +30,9 @@ let gameOver = false;
 let windOffset = 0;
 let windDirection = 1;
 
+// 🌊 TERRAIN
+let terrainOffset = 0;
+
 // SPEED LINES
 let lines = Array.from({ length: 20 }).map(() => ({
   x: Math.random(),
@@ -74,7 +77,7 @@ function update() {
     return;
   }
 
-  // STEER
+  // MOVE PLAYER
   if (keys["ArrowLeft"]) player.x -= player.speed;
   if (keys["ArrowRight"]) player.x += player.speed;
 
@@ -92,18 +95,24 @@ function update() {
     player.energy += 0.5;
   }
 
+  // 🌊 TERRAIN FLOW
+  terrainOffset += worldSpeed * 2;
+
+  // 🌍 GRAVITY EFFECT
+  let slope = Math.cos(terrainOffset);
+  worldSpeed += slope * 0.0003;
+
   // CLAMP
   worldSpeed = Math.max(0.001, Math.min(0.006, worldSpeed));
   player.energy = Math.max(0, Math.min(100, player.energy));
 
-  // 🌬️ WIND FORCE (push player)
+  player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
+
+  // WIND
   let windForce = Math.sin(score * 0.01) * 1.5;
   player.x += windForce;
 
-  // KEEP PLAYER ON SCREEN
-  player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
-
-  // 🌀 CURVE PATH (world shifting)
+  // CURVE
   windOffset += 0.002 * windDirection;
   if (Math.abs(windOffset) > 0.2) windDirection *= -1;
 
@@ -123,7 +132,12 @@ function update() {
     let scale = 0.5 + Math.pow(o.z, 2) * 6;
 
     let x = center + ((o.laneX + windOffset) - 0.5) * canvas.width * o.z;
-    let y = 100 + (canvas.height - 100) * o.z;
+
+    // 🌊 APPLY TERRAIN HEIGHT
+    let terrainHeight = Math.sin(terrainOffset + o.z * 5) * 40;
+
+    let y = 100 + (canvas.height - 100) * o.z + terrainHeight;
+
     let size = o.size * scale;
 
     if (checkCollision(player.x, player.y, player.width, player.height, x - size/2, y - size/2, size)) {
@@ -164,7 +178,10 @@ function draw() {
   // LINES
   for (let l of lines) {
     let x = center + (l.x - 0.5 + windOffset) * canvas.width * l.z;
-    let y = 100 + (canvas.height - 100) * l.z;
+
+    let terrainHeight = Math.sin(terrainOffset + l.z * 5) * 40;
+
+    let y = 100 + (canvas.height - 100) * l.z + terrainHeight;
 
     ctx.strokeStyle = "rgba(0,0,0,0.04)";
     ctx.beginPath();
@@ -178,7 +195,11 @@ function draw() {
     let scale = 0.5 + Math.pow(o.z, 2) * 6;
 
     let x = center + ((o.laneX + windOffset) - 0.5) * canvas.width * o.z;
-    let y = 100 + (canvas.height - 100) * o.z;
+
+    let terrainHeight = Math.sin(terrainOffset + o.z * 5) * 40;
+
+    let y = 100 + (canvas.height - 100) * o.z + terrainHeight;
+
     let size = o.size * scale;
 
     ctx.fillStyle = "red";
