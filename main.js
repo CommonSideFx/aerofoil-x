@@ -12,7 +12,8 @@ let player = {
   height: 24,
   speed: 6,
   energy: 100,
-  boosting: false
+  boosting: false,
+  hitTimer: 0
 };
 
 // INPUT
@@ -23,24 +24,52 @@ window.addEventListener("keyup", (e) => keys[e.key] = false);
 // WORLD
 let worldSpeed = 0.002;
 let score = 0;
+let gameOver = false;
 
 // SPEED LINES
-let lines = Array.from({ length: 25 }).map(() => ({
+let lines = Array.from({ length: 20 }).map(() => ({
   x: Math.random(),
   z: Math.random()
 }));
 
 // OBSTACLES
 let obstacles = [];
+
 function spawnObstacle() {
   obstacles.push({
     laneX: Math.random(),
-    z: 0.05
+    z: 0.05,
+    size: 12
   });
+}
+
+// COLLISION FUNCTION
+function checkCollision(px, py, pw, ph, ox, oy, os) {
+  return (
+    px < ox + os &&
+    px + pw > ox &&
+    py < oy + os &&
+    py + ph > oy
+  );
+}
+
+// RESET GAME
+function resetGame() {
+  player.energy = 100;
+  player.x = canvas.width / 2;
+  worldSpeed = 0.002;
+  score = 0;
+  obstacles = [];
+  gameOver = false;
 }
 
 // UPDATE
 function update() {
+  if (gameOver) {
+    if (keys["Enter"]) resetGame();
+    return;
+  }
+
   // movement
   if (keys["ArrowLeft"]) player.x -= player.speed;
   if (keys["ArrowRight"]) player.x += player.speed;
@@ -52,7 +81,7 @@ function update() {
   // BOOST
   if (keys["Shift"] && player.energy > 0) {
     player.boosting = true;
-    worldSpeed += 0.001; // stronger boost now
+    worldSpeed += 0.001;
     player.energy -= 1.2;
   } else {
     player.boosting = false;
@@ -60,19 +89,47 @@ function update() {
   }
 
   // clamp
-  worldSpeed = Math.max(0.001, Math.min(0.008, worldSpeed));
+  worldSpeed = Math.max(0.001, Math.min(0.006, worldSpeed));
   player.energy = Math.max(0, Math.min(100, player.energy));
 
-  // keep on screen
   player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
 
   // move obstacles
   for (let o of obstacles) {
     o.z += worldSpeed * 2;
   }
+
   obstacles = obstacles.filter(o => o.z < 1.2);
 
-  if (Math.random() < 0.04) spawnObstacle();
+  // LESS SPAWN (playable now)
+  if (Math.random() < 0.015) spawnObstacle();
+
+  // COLLISION CHECK
+  let center = canvas.width / 2;
+
+  for (let o of obstacles) {
+    let scale = 0.5 + Math.pow(o.z, 2) * 6;
+    let x = center + (o.laneX - 0.5) * canvas.width * o.z;
+    let y = 100 + (canvas.height - 100) * o.z;
+    let size = o.size * scale;
+
+    if (checkCollision(player.x, player.y, player.width, player.height, x - size/2, y - size/2, size)) {
+      player.hitTimer = 10;
+      player.energy -= 25;
+      worldSpeed *= 0.7; // slow down on hit
+    }
+  }
+
+  // HIT EFFECT TIMER
+  if (player.hitTimer > 0) player.hitTimer--;
+
+  // GAME OVER
+  if (player.energy <= 0) {
+    gameOver = true;
+  }
+
+  // SCORE
+  score += worldSpeed * 10;
 
   // update lines
   for (let l of lines) {
@@ -82,9 +139,6 @@ function update() {
       l.x = Math.random();
     }
   }
-
-  // SCORE grows with speed
-  score += worldSpeed * 10;
 }
 
 // DRAW
@@ -118,13 +172,19 @@ function draw() {
     let scale = 0.5 + Math.pow(o.z, 2) * 6;
     let x = center + (o.laneX - 0.5) * canvas.width * o.z;
     let y = 100 + (canvas.height - 100) * o.z;
-    let size = 10 * scale;
+    let size = o.size * scale;
 
     ctx.fillStyle = "red";
-    ctx.fillRect(x - size / 2, y - size / 2, size, size);
+    ctx.fillRect(x - size/2, y - size/2, size, size);
   }
 
-  // 🔥 ENERGY TRAIL (layered glow)
+  // HIT FLASH
+  if (player.hitTimer > 0) {
+    ctx.fillStyle = "rgba(255,0,0,0.3)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
+  // ENERGY TRAIL
   for (let i = 0; i < 3; i++) {
     ctx.strokeStyle = player.boosting
       ? `rgba(255,140,0,${0.3 - i * 0.1})`
@@ -139,7 +199,7 @@ function draw() {
   }
 
   // PLAYER
-  ctx.fillStyle = "black";
+  ctx.fillStyle = player.hitTimer > 0 ? "red" : "black";
   ctx.fillRect(player.x, player.y, player.width, player.height);
 
   // ENERGY BAR
@@ -154,8 +214,16 @@ function draw() {
   ctx.font = "18px Arial";
   ctx.fillText("Score: " + Math.floor(score), 20, 70);
 
-  // SPEED
   ctx.fillText("Speed: " + worldSpeed.toFixed(4), 20, 25);
+
+  // GAME OVER TEXT
+  if (gameOver) {
+    ctx.fillStyle = "black";
+    ctx.font = "32px Arial";
+    ctx.fillText("GAME OVER", canvas.width / 2 - 100, canvas.height / 2);
+    ctx.font = "18px Arial";
+    ctx.fillText("Press Enter to Restart", canvas.width / 2 - 110, canvas.height / 2 + 40);
+  }
 }
 
 // LOOP
