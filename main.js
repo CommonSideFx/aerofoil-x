@@ -4,7 +4,10 @@ const ctx = canvas.getContext("2d");
 canvas.width = 800;
 canvas.height = 600;
 
-// PLAYER
+// ----- ENV -----
+let environment = "city";
+
+// ----- PLAYER -----
 let player = {
   x: canvas.width / 2,
   y: canvas.height - 90,
@@ -16,12 +19,12 @@ let player = {
   hitTimer: 0
 };
 
-// INPUT
+// ----- INPUT -----
 let keys = {};
 window.addEventListener("keydown", (e) => keys[e.key] = true);
 window.addEventListener("keyup", (e) => keys[e.key] = false);
 
-// WORLD
+// ----- WORLD -----
 let worldSpeed = 0.002;
 let score = 0;
 let gameOver = false;
@@ -30,7 +33,7 @@ let gameOver = false;
 let windOffset = 0;
 let windDirection = 1;
 
-// 🌊 TERRAIN
+// TERRAIN
 let terrainOffset = 0;
 
 // SPEED LINES
@@ -39,14 +42,16 @@ let lines = Array.from({ length: 20 }).map(() => ({
   z: Math.random()
 }));
 
-// OBSTACLES
+// OBSTACLES (city types)
 let obstacles = [];
+const obstacleTypes = ["debris", "barrier", "cone"];
 
 function spawnObstacle() {
   obstacles.push({
     laneX: Math.random(),
     z: 0.05,
-    size: 12
+    size: 12,
+    type: obstacleTypes[Math.floor(Math.random() * obstacleTypes.length)]
   });
 }
 
@@ -77,7 +82,7 @@ function update() {
     return;
   }
 
-  // MOVE PLAYER
+  // MOVE
   if (keys["ArrowLeft"]) player.x -= player.speed;
   if (keys["ArrowRight"]) player.x += player.speed;
 
@@ -95,10 +100,8 @@ function update() {
     player.energy += 0.5;
   }
 
-  // 🌊 TERRAIN FLOW
+  // TERRAIN
   terrainOffset += worldSpeed * 2;
-
-  // 🌍 GRAVITY EFFECT
   let slope = Math.cos(terrainOffset);
   worldSpeed += slope * 0.0003;
 
@@ -116,28 +119,19 @@ function update() {
   windOffset += 0.002 * windDirection;
   if (Math.abs(windOffset) > 0.2) windDirection *= -1;
 
-  // MOVE OBSTACLES
-  for (let o of obstacles) {
-    o.z += worldSpeed * 2;
-  }
-
+  // OBSTACLES
+  for (let o of obstacles) o.z += worldSpeed * 2;
   obstacles = obstacles.filter(o => o.z < 1.2);
 
   if (Math.random() < 0.015) spawnObstacle();
 
   let center = canvas.width / 2;
 
-  // COLLISION
   for (let o of obstacles) {
     let scale = 0.5 + Math.pow(o.z, 2) * 6;
-
     let x = center + ((o.laneX + windOffset) - 0.5) * canvas.width * o.z;
-
-    // 🌊 APPLY TERRAIN HEIGHT
     let terrainHeight = Math.sin(terrainOffset + o.z * 5) * 40;
-
     let y = 100 + (canvas.height - 100) * o.z + terrainHeight;
-
     let size = o.size * scale;
 
     if (checkCollision(player.x, player.y, player.width, player.height, x - size/2, y - size/2, size)) {
@@ -148,12 +142,10 @@ function update() {
   }
 
   if (player.hitTimer > 0) player.hitTimer--;
-
   if (player.energy <= 0) gameOver = true;
 
   score += worldSpeed * 10;
 
-  // LINES
   for (let l of lines) {
     l.z += worldSpeed;
     if (l.z > 1) {
@@ -163,24 +155,41 @@ function update() {
   }
 }
 
-// DRAW
+// ----- DRAW -----
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  let gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-  gradient.addColorStop(0, "#cfeeff");
-  gradient.addColorStop(1, "#ffffff");
-  ctx.fillStyle = gradient;
+  // 🌆 SKY
+  let sky = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  sky.addColorStop(0, "#9ec9ff");
+  sky.addColorStop(1, "#e6f2ff");
+  ctx.fillStyle = sky;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   let center = canvas.width / 2;
 
-  // LINES
+  // 🏙️ CITY SKYLINE
+  ctx.fillStyle = "#333";
+  for (let i = 0; i < 20; i++) {
+    let x = i * 50;
+    let h = 40 + Math.random() * 60;
+    ctx.fillRect(x, 120 - h, 40, h);
+  }
+
+  // 🛣️ ROAD
+  ctx.fillStyle = "#555";
+  ctx.beginPath();
+  ctx.moveTo(center - 100, canvas.height);
+  ctx.lineTo(center + 100, canvas.height);
+  ctx.lineTo(center + 10, 120);
+  ctx.lineTo(center - 10, 120);
+  ctx.closePath();
+  ctx.fill();
+
+  // LINES (motion)
   for (let l of lines) {
     let x = center + (l.x - 0.5 + windOffset) * canvas.width * l.z;
-
     let terrainHeight = Math.sin(terrainOffset + l.z * 5) * 40;
-
     let y = 100 + (canvas.height - 100) * l.z + terrainHeight;
 
     ctx.strokeStyle = "rgba(0,0,0,0.04)";
@@ -190,19 +199,18 @@ function draw() {
     ctx.stroke();
   }
 
-  // OBSTACLES
+  // 🚧 OBSTACLES (CITY STYLE)
   for (let o of obstacles) {
     let scale = 0.5 + Math.pow(o.z, 2) * 6;
-
     let x = center + ((o.laneX + windOffset) - 0.5) * canvas.width * o.z;
-
     let terrainHeight = Math.sin(terrainOffset + o.z * 5) * 40;
-
     let y = 100 + (canvas.height - 100) * o.z + terrainHeight;
-
     let size = o.size * scale;
 
-    ctx.fillStyle = "red";
+    if (o.type === "cone") ctx.fillStyle = "orange";
+    else if (o.type === "barrier") ctx.fillStyle = "yellow";
+    else ctx.fillStyle = "black";
+
     ctx.fillRect(x - size/2, y - size/2, size, size);
   }
 
@@ -251,10 +259,10 @@ function draw() {
   }
 }
 
+// LOOP
 function gameLoop() {
   update();
   draw();
   requestAnimationFrame(gameLoop);
 }
-
 gameLoop();
