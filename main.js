@@ -4,71 +4,90 @@ const ctx = canvas.getContext("2d");
 canvas.width = 800;
 canvas.height = 600;
 
-const playerSize = 20;
+// PLAYER (stays near bottom center)
 let player = {
-  x: 400,
-  y: 300,
-  vx: 0,
-  vy: 0,
-  accel: 0.2,
-  friction: 0.98,
-  maxSpeed: 5
+  x: canvas.width / 2,
+  y: canvas.height - 100,
+  width: 20,
+  height: 20,
+  speed: 5
 };
 
-};
-
+// INPUT
 let keys = {};
+window.addEventListener("keydown", (e) => keys[e.key] = true);
+window.addEventListener("keyup", (e) => keys[e.key] = false);
 
-window.addEventListener("keydown", (e) => {
-  keys[e.key] = true;
-});
+// WORLD SPEED (this is your “downhill energy flow”)
+let worldSpeed = 6;
 
-window.addEventListener("keyup", (e) => {
-  keys[e.key] = false;
-});
+// OBSTACLES
+let obstacles = [];
 
+function spawnObstacle() {
+  obstacles.push({
+    x: Math.random() * (canvas.width - 30),
+    y: -50,
+    width: 20,
+    height: 20
+  });
+}
+
+// UPDATE
 function update() {
-  if (keys["ArrowUp"]) player.vy -= player.accel;
-  if (keys["ArrowDown"]) player.vy += player.accel;
-  if (keys["ArrowLeft"]) player.vx -= player.accel;
-  if (keys["ArrowRight"]) player.vx += player.accel;
-
-  // gravity effect (pull downward)
-  player.vy += 0.1;
-
-  // friction (glide feel)
-  player.vx *= player.friction;
-  player.vy *= player.friction;
-
-  // speed limit
-  player.vx = Math.max(-player.maxSpeed, Math.min(player.maxSpeed, player.vx));
-  player.vy = Math.max(-player.maxSpeed, Math.min(player.maxSpeed, player.vy));
-
-  // move
-  player.x += player.vx;
-  player.y += player.vy;
+  // left/right movement
+  if (keys["ArrowLeft"]) player.x -= player.speed;
+  if (keys["ArrowRight"]) player.x += player.speed;
 
   // boundaries
-  if (player.x < 0) player.x = 0;
-  if (player.x > canvas.width - 20) player.x = canvas.width - 20;
+  player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
 
-  if (player.y < 0) player.y = 0;
-  if (player.y > canvas.height - 20) player.y = canvas.height - 20;
+  // move world toward player
+  for (let obj of obstacles) {
+    obj.y += worldSpeed;
+  }
+
+  // remove off-screen obstacles
+  obstacles = obstacles.filter(obj => obj.y < canvas.height);
+
+  // spawn new ones
+  if (Math.random() < 0.03) {
+    spawnObstacle();
+  }
+
+  // collision detection
+  for (let obj of obstacles) {
+    if (
+      player.x < obj.x + obj.width &&
+      player.x + player.width > obj.x &&
+      player.y < obj.y + obj.height &&
+      player.y + player.height > obj.y
+    ) {
+      console.log("HIT!");
+    }
+  }
 }
-  // HARD boundaries (this will NOT fail)
-  if (player.x < 0) player.x = 0;
-  if (player.x > canvas.width - playerSize) player.x = canvas.width - playerSize;
 
-  if (player.y < 0) player.y = 0;
-  if (player.y > canvas.height - playerSize) player.y = canvas.height - playerSize;
-}
-
+// DRAW
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // background (flow effect)
+  ctx.fillStyle = "#e6f7ff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // draw player
   ctx.fillStyle = "black";
-  ctx.fillRect(player.x, player.y, playerSize, playerSize);
+  ctx.fillRect(player.x, player.y, player.width, player.height);
+
+  // draw obstacles
+  ctx.fillStyle = "red";
+  for (let obj of obstacles) {
+    ctx.fillRect(obj.x, obj.y, obj.width, obj.height);
+  }
 }
 
+// LOOP
 function gameLoop() {
   update();
   draw();
