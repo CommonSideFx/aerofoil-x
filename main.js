@@ -4,7 +4,7 @@ const ctx = canvas.getContext("2d");
 canvas.width = 800;
 canvas.height = 600;
 
-// ---- PLAYER (near bottom) ----
+// PLAYER
 let player = {
   x: canvas.width / 2,
   y: canvas.height - 90,
@@ -13,136 +13,106 @@ let player = {
   speed: 6
 };
 
-// ---- INPUT ----
+// INPUT
 let keys = {};
 window.addEventListener("keydown", (e) => keys[e.key] = true);
 window.addEventListener("keyup", (e) => keys[e.key] = false);
 
-// ---- WORLD ----
-let worldSpeed = 0.008; // how fast depth increases (forward speed)
+// WORLD SPEED (forward motion)
+let worldSpeed = 0.003;
 
-// Obstacles live in "depth space" (z from 0=far to 1=near)
-let obstacles = [];
-
-// Speed lines (background flow)
-let lines = Array.from({ length: 60 }).map(() => ({
-  x: Math.random() * canvas.width,
-  z: Math.random() // depth
+// SPEED LINES (background motion)
+let lines = Array.from({ length: 25 }).map(() => ({
+  x: Math.random(),
+  z: Math.random()
 }));
+
+// OBSTACLES
+let obstacles = [];
 
 function spawnObstacle() {
   obstacles.push({
-    laneX: Math.random(), // 0..1 across screen
-    z: 0.05,              // start far away
-    baseSize: 10
+    laneX: Math.random(),
+    z: 0.05
   });
 }
 
-// ---- UPDATE ----
+// UPDATE
 function update() {
-  // steer left/right
+  // left/right movement
   if (keys["ArrowLeft"]) player.x -= player.speed;
   if (keys["ArrowRight"]) player.x += player.speed;
 
-  // keep on screen
+  // throttle (forward/back feel)
+  if (keys["ArrowUp"]) worldSpeed += 0.0002;
+  if (keys["ArrowDown"]) worldSpeed -= 0.0002;
+
+  worldSpeed = Math.max(0.001, Math.min(0.01, worldSpeed));
+
+  // keep player on screen
   player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
 
-  // move obstacles "toward camera" by increasing z
+  // move obstacles forward
   for (let o of obstacles) {
-    o.z += worldSpeed * 2.2; // faster than lines
+    o.z += worldSpeed * 2;
   }
 
-  // recycle when past camera
+  // remove passed obstacles
   obstacles = obstacles.filter(o => o.z < 1.2);
 
   // spawn
   if (Math.random() < 0.04) spawnObstacle();
-
-  // update speed lines
-  for (let l of lines) {
-    l.z += worldSpeed;
-    if (l.z > 1) {
-      l.z = 0;
-      l.x = Math.random() * canvas.width;
-    }
-  }
-
-  // collision (approximate with screen-space size)
-  for (let o of obstacles) {
-    let scale = perspectiveScale(o.z);
-    let size = o.baseSize * scale;
-
-    let x = projectX(o.laneX, o.z) - size / 2;
-    let y = projectY(o.z) - size / 2;
-
-    if (
-      player.x < x + size &&
-      player.x + player.width > x &&
-      player.y < y + size &&
-      player.y + player.height > y
-    ) {
-      console.log("HIT!");
-    }
-  }
 }
 
-// ---- PERSPECTIVE HELPERS ----
-// bigger as z -> 1 (near)
-function perspectiveScale(z) {
-  // curve for stronger near growth
-  return 0.5 + Math.pow(z, 2) * 8;
-}
-
-// pull toward center (vanishing point)
-function projectX(laneX, z) {
-  const center = canvas.width / 2;
-  const spread = (laneX - 0.5) * canvas.width * (0.2 + z); // narrow far, wider near
-  return center + spread;
-}
-
-// map depth to screen Y (far near horizon, near at bottom)
-function projectY(z) {
-  const horizon = 120; // where far objects appear
-  const bottom = canvas.height;
-  return horizon + (bottom - horizon) * z;
-}
-
-// ---- DRAW ----
+// DRAW
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // sky / water gradient
-  let g = ctx.createLinearGradient(0, 0, 0, canvas.height);
-  g.addColorStop(0, "#cfeeff");
-  g.addColorStop(1, "#ffffff");
-  ctx.fillStyle = g;
+  // BACKGROUND
+  let gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  gradient.addColorStop(0, "#cfeeff");
+  gradient.addColorStop(1, "#ffffff");
+  ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // speed lines (flow)
-  ctx.strokeStyle = "rgba(0,0,0,0.15)";
-  ctx.lineWidth = 2;
+  // VANISHING POINT
+  let vanishingPoint = canvas.width / 2;
+
+  // SPEED LINES (forward motion effect)
   for (let l of lines) {
-    const y = projectY(l.z);
-    const len = 10 + l.z * 40;
+    l.z += worldSpeed;
+
+    if (l.z > 1) {
+      l.z = 0;
+      l.x = Math.random();
+    }
+
+    let x = vanishingPoint + (l.x - 0.5) * canvas.width * l.z;
+    let y = 100 + (canvas.height - 100) * l.z;
+
+    let length = 10 + l.z * 30;
+
+    ctx.strokeStyle = "rgba(0,0,0,0.08)";
     ctx.beginPath();
-    ctx.moveTo(l.x, y);
-    ctx.lineTo(l.x, y + len);
+    ctx.moveTo(x, y);
+    ctx.lineTo(x, y + length);
     ctx.stroke();
   }
 
-  // obstacles (grow as they approach)
-  ctx.fillStyle = "red";
+  // OBSTACLES (perspective scaling)
   for (let o of obstacles) {
-    const scale = perspectiveScale(o.z);
-    const size = o.baseSize * scale;
+    let scale = 0.5 + Math.pow(o.z, 2) * 6;
 
-    const x = projectX(o.laneX, o.z) - size / 2;
-    const y = projectY(o.z) - size / 2;
+    let x = vanishingPoint + (o.laneX - 0.5) * canvas.width * o.z;
+    let y = 100 + (canvas.height - 100) * o.z;
 
-    ctx.fillRect(x, y, size, size);
+    let size = 10 * scale;
+
+    ctx.fillStyle = "red";
+    ctx.fillRect(x - size / 2, y - size / 2, size, size);
   }
 
-  // player trail
+  // PLAYER TRAIL
   ctx.strokeStyle = "orange";
   ctx.lineWidth = 4;
   ctx.beginPath();
@@ -150,16 +120,16 @@ function draw() {
   ctx.lineTo(player.x + player.width / 2, player.y + 30);
   ctx.stroke();
 
-  // player
+  // PLAYER
   ctx.fillStyle = "black";
   ctx.fillRect(player.x, player.y, player.width, player.height);
 }
 
-// ---- LOOP ----
-function loop() {
+// LOOP
+function gameLoop() {
   update();
   draw();
-  requestAnimationFrame(loop);
+  requestAnimationFrame(gameLoop);
 }
 
-loop();
+gameLoop();
