@@ -8,9 +8,9 @@ canvas.height = 600;
 let player = {
   x: canvas.width / 2,
   y: canvas.height - 90,
-  width: 20,
-  height: 20,
-  speed: 5,
+  width: 18,
+  height: 18,
+  speed: 4.5,
   energy: 100,
   boosting: false,
   hitTimer: 0
@@ -22,15 +22,18 @@ window.addEventListener("keydown", e => keys[e.key] = true);
 window.addEventListener("keyup", e => keys[e.key] = false);
 
 // WORLD
-let worldSpeed = 0.002;
+let worldSpeed = 0.0015;
 let score = 0;
 let gameOver = false;
 
-// FLOW PATH
+// FLOW
 let flowOffset = 0;
 
-// PARTICLES (water streaks)
-let lines = Array.from({ length: 30 }).map(() => ({
+// TERRAIN (vertical hills)
+let terrainOffset = 0;
+
+// SPEED LINES
+let lines = Array.from({ length: 25 }).map(() => ({
   x: Math.random(),
   z: Math.random()
 }));
@@ -42,7 +45,7 @@ function spawnObstacle() {
   obstacles.push({
     laneX: Math.random(),
     z: 0.05,
-    size: 12
+    size: 10
   });
 }
 
@@ -60,15 +63,20 @@ function checkCollision(px, py, pw, ph, ox, oy, os) {
 function resetGame() {
   player.energy = 100;
   player.x = canvas.width / 2;
-  worldSpeed = 0.002;
+  worldSpeed = 0.0015;
   score = 0;
   obstacles = [];
   gameOver = false;
 }
 
-// FLOW CURVE FUNCTION
+// FLOW CURVE
 function getFlowX(z) {
-  return Math.sin(flowOffset + z * 5) * 120;
+  return Math.sin(flowOffset + z * 5) * 110;
+}
+
+// TERRAIN HEIGHT (this is the hill illusion)
+function getTerrainY(z) {
+  return Math.sin(terrainOffset + z * 4) * 35;
 }
 
 // UPDATE
@@ -78,53 +86,57 @@ function update() {
     return;
   }
 
-  // STEER
+  // steer
   if (keys["ArrowLeft"]) player.x -= player.speed;
   if (keys["ArrowRight"]) player.x += player.speed;
 
-  // THROTTLE
-  if (keys["ArrowUp"]) worldSpeed += 0.0002;
-  if (keys["ArrowDown"]) worldSpeed -= 0.0002;
+  // throttle
+  if (keys["ArrowUp"]) worldSpeed += 0.00015;
+  if (keys["ArrowDown"]) worldSpeed -= 0.00015;
 
-  // BOOST
+  // boost
   if (keys["Shift"] && player.energy > 0) {
     player.boosting = true;
-    worldSpeed += 0.001;
-    player.energy -= 1;
+    worldSpeed += 0.0007;
+    player.energy -= 0.8;
   } else {
     player.boosting = false;
-    player.energy += 0.4;
+    player.energy += 0.3;
   }
 
-  worldSpeed = Math.max(0.001, Math.min(0.006, worldSpeed));
+  // clamp
+  worldSpeed = Math.max(0.0008, Math.min(0.004, worldSpeed));
   player.energy = Math.max(0, Math.min(100, player.energy));
 
-  // FLOW MOVEMENT
+  // move world
   flowOffset += worldSpeed * 2;
+  terrainOffset += worldSpeed * 1.5;
 
-  // PLAYER stays near flow center (slight pull)
+  // gravity feel (downhill = faster)
+  let slope = Math.cos(terrainOffset);
+  worldSpeed += slope * 0.0002;
+
+  // flow center pull
   let flowCenter = canvas.width / 2 + getFlowX(0.9);
-  player.x += (flowCenter - player.x) * 0.02;
+  player.x += (flowCenter - player.x) * 0.015;
 
-  // keep in bounds
+  // bounds
   player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
 
-  // OBSTACLES MOVE
-  for (let o of obstacles) o.z += worldSpeed * 2;
+  // obstacles
+  for (let o of obstacles) o.z += worldSpeed * 1.8;
   obstacles = obstacles.filter(o => o.z < 1.2);
 
-  if (Math.random() < 0.012) spawnObstacle();
+  // LESS SPAWN (playable)
+  if (Math.random() < 0.008) spawnObstacle();
 
   let center = canvas.width / 2;
 
-  // COLLISION
   for (let o of obstacles) {
-    let scale = 0.5 + Math.pow(o.z, 2) * 6;
+    let scale = 0.5 + Math.pow(o.z, 2) * 5;
 
-    let flowX = getFlowX(o.z);
-    let x = center + flowX + (o.laneX - 0.5) * 120 * o.z;
-
-    let y = 100 + (canvas.height - 100) * o.z;
+    let x = center + getFlowX(o.z) + (o.laneX - 0.5) * 100 * o.z;
+    let y = 120 + (canvas.height - 120) * o.z + getTerrainY(o.z);
     let size = o.size * scale;
 
     if (checkCollision(player.x, player.y, player.width, player.height, x - size/2, y - size/2, size)) {
@@ -139,7 +151,7 @@ function update() {
 
   score += worldSpeed * 10;
 
-  // WATER LINES
+  // lines
   for (let l of lines) {
     l.z += worldSpeed;
     if (l.z > 1) {
@@ -153,48 +165,43 @@ function update() {
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // WATER BACKGROUND
+  // SKY / WATER
   let g = ctx.createLinearGradient(0, 0, 0, canvas.height);
-  g.addColorStop(0, "#a8dfff");
-  g.addColorStop(1, "#e6f7ff");
+  g.addColorStop(0, "#bfe6ff");
+  g.addColorStop(1, "#eafaff");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   let center = canvas.width / 2;
 
-  // FLOW CHANNEL (visual path)
+  // FLOW PATH
   ctx.strokeStyle = "rgba(0,0,0,0.08)";
-  ctx.lineWidth = 2;
-
   ctx.beginPath();
   for (let z = 0; z < 1; z += 0.02) {
     let x = center + getFlowX(z);
-    let y = 100 + (canvas.height - 100) * z;
+    let y = 120 + (canvas.height - 120) * z + getTerrainY(z);
     ctx.lineTo(x, y);
   }
   ctx.stroke();
 
-  // WATER LINES
+  // LINES
   for (let l of lines) {
-    let flowX = getFlowX(l.z);
-
-    let x = center + flowX + (l.x - 0.5) * 100 * l.z;
-    let y = 100 + (canvas.height - 100) * l.z;
+    let x = center + getFlowX(l.z) + (l.x - 0.5) * 90 * l.z;
+    let y = 120 + (canvas.height - 120) * l.z + getTerrainY(l.z);
 
     ctx.strokeStyle = "rgba(0,0,0,0.05)";
     ctx.beginPath();
     ctx.moveTo(x, y);
-    ctx.lineTo(x, y + 10 + l.z * 20);
+    ctx.lineTo(x, y + 8 + l.z * 15);
     ctx.stroke();
   }
 
-  // OBSTACLES (in water)
+  // OBSTACLES
   for (let o of obstacles) {
-    let scale = 0.5 + Math.pow(o.z, 2) * 6;
+    let scale = 0.5 + Math.pow(o.z, 2) * 5;
 
-    let flowX = getFlowX(o.z);
-    let x = center + flowX + (o.laneX - 0.5) * 120 * o.z;
-    let y = 100 + (canvas.height - 100) * o.z;
+    let x = center + getFlowX(o.z) + (o.laneX - 0.5) * 100 * o.z;
+    let y = 120 + (canvas.height - 120) * o.z + getTerrainY(o.z);
     let size = o.size * scale;
 
     ctx.fillStyle = "#444";
@@ -213,11 +220,11 @@ function draw() {
       ? `rgba(255,140,0,${0.3 - i * 0.1})`
       : `rgba(0,200,255,${0.3 - i * 0.1})`;
 
-    ctx.lineWidth = player.boosting ? 10 - i * 3 : 6 - i * 2;
+    ctx.lineWidth = player.boosting ? 8 - i * 2 : 5 - i * 1.5;
 
     ctx.beginPath();
     ctx.moveTo(player.x + player.width / 2, player.y);
-    ctx.lineTo(player.x + player.width / 2, player.y + 40 + i * 10);
+    ctx.lineTo(player.x + player.width / 2, player.y + 35 + i * 8);
     ctx.stroke();
   }
 
@@ -233,18 +240,19 @@ function draw() {
   ctx.fillRect(20, 40, player.energy, 10);
 
   ctx.fillStyle = "black";
-  ctx.font = "18px Arial";
+  ctx.font = "16px Arial";
   ctx.fillText("Score: " + Math.floor(score), 20, 70);
+  ctx.fillText("Speed: " + worldSpeed.toFixed(4), 20, 25);
 
   if (gameOver) {
-    ctx.fillStyle = "black";
-    ctx.font = "32px Arial";
+    ctx.font = "30px Arial";
     ctx.fillText("GAME OVER", canvas.width / 2 - 100, canvas.height / 2);
-    ctx.font = "18px Arial";
-    ctx.fillText("Press Enter to Restart", canvas.width / 2 - 110, canvas.height / 2 + 40);
+    ctx.font = "16px Arial";
+    ctx.fillText("Press Enter to Restart", canvas.width / 2 - 100, canvas.height / 2 + 30);
   }
 }
 
+// LOOP
 function gameLoop() {
   update();
   draw();
