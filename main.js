@@ -4,6 +4,8 @@ const ctx = canvas.getContext("2d");
 canvas.width = 800;
 canvas.height = 600;
 
+const playerSize = 20;
+
 let player = {
   x: 400,
   y: 300,
@@ -26,14 +28,18 @@ function update() {
   if (keys["ArrowLeft"]) player.x -= player.speed;
   if (keys["ArrowRight"]) player.x += player.speed;
 
-  // Keep player inside screen
-  player.x = Math.max(0, Math.min(canvas.width - 20, player.x));
-  player.y = Math.max(0, Math.min(canvas.height - 20, player.y));
+  // HARD boundaries (this will NOT fail)
+  if (player.x < 0) player.x = 0;
+  if (player.x > canvas.width - playerSize) player.x = canvas.width - playerSize;
+
+  if (player.y < 0) player.y = 0;
+  if (player.y > canvas.height - playerSize) player.y = canvas.height - playerSize;
 }
 
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillRect(player.x, player.y, 20, 20);
+  ctx.fillStyle = "black";
+  ctx.fillRect(player.x, player.y, playerSize, playerSize);
 }
 
 function gameLoop() {
