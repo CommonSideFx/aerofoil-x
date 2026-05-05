@@ -26,6 +26,10 @@ let worldSpeed = 0.002;
 let score = 0;
 let gameOver = false;
 
+// WIND + CURVE
+let windOffset = 0;
+let windDirection = 1;
+
 // SPEED LINES
 let lines = Array.from({ length: 20 }).map(() => ({
   x: Math.random(),
@@ -43,7 +47,7 @@ function spawnObstacle() {
   });
 }
 
-// COLLISION FUNCTION
+// COLLISION
 function checkCollision(px, py, pw, ph, ox, oy, os) {
   return (
     px < ox + os &&
@@ -53,7 +57,7 @@ function checkCollision(px, py, pw, ph, ox, oy, os) {
   );
 }
 
-// RESET GAME
+// RESET
 function resetGame() {
   player.energy = 100;
   player.x = canvas.width / 2;
@@ -70,11 +74,11 @@ function update() {
     return;
   }
 
-  // movement
+  // STEER
   if (keys["ArrowLeft"]) player.x -= player.speed;
   if (keys["ArrowRight"]) player.x += player.speed;
 
-  // throttle
+  // THROTTLE
   if (keys["ArrowUp"]) worldSpeed += 0.0002;
   if (keys["ArrowDown"]) worldSpeed -= 0.0002;
 
@@ -88,50 +92,54 @@ function update() {
     player.energy += 0.5;
   }
 
-  // clamp
+  // CLAMP
   worldSpeed = Math.max(0.001, Math.min(0.006, worldSpeed));
   player.energy = Math.max(0, Math.min(100, player.energy));
 
+  // 🌬️ WIND FORCE (push player)
+  let windForce = Math.sin(score * 0.01) * 1.5;
+  player.x += windForce;
+
+  // KEEP PLAYER ON SCREEN
   player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
 
-  // move obstacles
+  // 🌀 CURVE PATH (world shifting)
+  windOffset += 0.002 * windDirection;
+  if (Math.abs(windOffset) > 0.2) windDirection *= -1;
+
+  // MOVE OBSTACLES
   for (let o of obstacles) {
     o.z += worldSpeed * 2;
   }
 
   obstacles = obstacles.filter(o => o.z < 1.2);
 
-  // LESS SPAWN (playable now)
   if (Math.random() < 0.015) spawnObstacle();
 
-  // COLLISION CHECK
   let center = canvas.width / 2;
 
+  // COLLISION
   for (let o of obstacles) {
     let scale = 0.5 + Math.pow(o.z, 2) * 6;
-    let x = center + (o.laneX - 0.5) * canvas.width * o.z;
+
+    let x = center + ((o.laneX + windOffset) - 0.5) * canvas.width * o.z;
     let y = 100 + (canvas.height - 100) * o.z;
     let size = o.size * scale;
 
     if (checkCollision(player.x, player.y, player.width, player.height, x - size/2, y - size/2, size)) {
       player.hitTimer = 10;
       player.energy -= 25;
-      worldSpeed *= 0.7; // slow down on hit
+      worldSpeed *= 0.7;
     }
   }
 
-  // HIT EFFECT TIMER
   if (player.hitTimer > 0) player.hitTimer--;
 
-  // GAME OVER
-  if (player.energy <= 0) {
-    gameOver = true;
-  }
+  if (player.energy <= 0) gameOver = true;
 
-  // SCORE
   score += worldSpeed * 10;
 
-  // update lines
+  // LINES
   for (let l of lines) {
     l.z += worldSpeed;
     if (l.z > 1) {
@@ -145,7 +153,6 @@ function update() {
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // background
   let gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
   gradient.addColorStop(0, "#cfeeff");
   gradient.addColorStop(1, "#ffffff");
@@ -154,23 +161,23 @@ function draw() {
 
   let center = canvas.width / 2;
 
-  // SPEED LINES
+  // LINES
   for (let l of lines) {
-    let x = center + (l.x - 0.5) * canvas.width * l.z;
+    let x = center + (l.x - 0.5 + windOffset) * canvas.width * l.z;
     let y = 100 + (canvas.height - 100) * l.z;
-    let length = 5 + l.z * 20;
 
     ctx.strokeStyle = "rgba(0,0,0,0.04)";
     ctx.beginPath();
     ctx.moveTo(x, y);
-    ctx.lineTo(x, y + length);
+    ctx.lineTo(x, y + 10 + l.z * 20);
     ctx.stroke();
   }
 
   // OBSTACLES
   for (let o of obstacles) {
     let scale = 0.5 + Math.pow(o.z, 2) * 6;
-    let x = center + (o.laneX - 0.5) * canvas.width * o.z;
+
+    let x = center + ((o.laneX + windOffset) - 0.5) * canvas.width * o.z;
     let y = 100 + (canvas.height - 100) * o.z;
     let size = o.size * scale;
 
@@ -184,7 +191,7 @@ function draw() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
 
-  // ENERGY TRAIL
+  // TRAIL
   for (let i = 0; i < 3; i++) {
     ctx.strokeStyle = player.boosting
       ? `rgba(255,140,0,${0.3 - i * 0.1})`
@@ -202,21 +209,18 @@ function draw() {
   ctx.fillStyle = player.hitTimer > 0 ? "red" : "black";
   ctx.fillRect(player.x, player.y, player.width, player.height);
 
-  // ENERGY BAR
+  // UI
   ctx.fillStyle = "black";
   ctx.fillRect(20, 40, 100, 10);
 
   ctx.fillStyle = player.boosting ? "orange" : "cyan";
   ctx.fillRect(20, 40, player.energy, 10);
 
-  // SCORE
   ctx.fillStyle = "black";
   ctx.font = "18px Arial";
   ctx.fillText("Score: " + Math.floor(score), 20, 70);
-
   ctx.fillText("Speed: " + worldSpeed.toFixed(4), 20, 25);
 
-  // GAME OVER TEXT
   if (gameOver) {
     ctx.fillStyle = "black";
     ctx.font = "32px Arial";
@@ -226,7 +230,6 @@ function draw() {
   }
 }
 
-// LOOP
 function gameLoop() {
   update();
   draw();
