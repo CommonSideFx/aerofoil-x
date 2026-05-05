@@ -4,7 +4,7 @@ const ctx = canvas.getContext("2d");
 canvas.width = 800;
 canvas.height = 600;
 
-// ----- PLAYER -----
+// PLAYER
 let player = {
   x: canvas.width / 2,
   y: canvas.height - 90,
@@ -15,66 +15,66 @@ let player = {
   boosting: false
 };
 
-// ----- INPUT -----
+// INPUT
 let keys = {};
 window.addEventListener("keydown", (e) => keys[e.key] = true);
 window.addEventListener("keyup", (e) => keys[e.key] = false);
 
-// ----- WORLD SPEED (forward motion) -----
+// WORLD
 let worldSpeed = 0.002;
+let score = 0;
 
-// ----- SPEED LINES (background flow) -----
+// SPEED LINES
 let lines = Array.from({ length: 25 }).map(() => ({
-  x: Math.random(), // 0..1 across screen
-  z: Math.random()  // depth (0 far → 1 near)
+  x: Math.random(),
+  z: Math.random()
 }));
 
-// ----- OBSTACLES -----
+// OBSTACLES
 let obstacles = [];
 function spawnObstacle() {
   obstacles.push({
-    laneX: Math.random(), // 0..1
-    z: 0.05               // start far
+    laneX: Math.random(),
+    z: 0.05
   });
 }
 
-// ----- UPDATE -----
+// UPDATE
 function update() {
-  // steer
+  // movement
   if (keys["ArrowLeft"]) player.x -= player.speed;
   if (keys["ArrowRight"]) player.x += player.speed;
 
-  // throttle (forward/back feel)
+  // throttle
   if (keys["ArrowUp"]) worldSpeed += 0.0002;
   if (keys["ArrowDown"]) worldSpeed -= 0.0002;
 
-  // BOOST (hold Shift)
+  // BOOST
   if (keys["Shift"] && player.energy > 0) {
     player.boosting = true;
-    worldSpeed += 0.0005;
-    player.energy -= 0.8;
+    worldSpeed += 0.001; // stronger boost now
+    player.energy -= 1.2;
   } else {
     player.boosting = false;
-    player.energy += 0.4;
+    player.energy += 0.5;
   }
 
-  // clamp values
-  worldSpeed = Math.max(0.001, Math.min(0.006, worldSpeed));
+  // clamp
+  worldSpeed = Math.max(0.001, Math.min(0.008, worldSpeed));
   player.energy = Math.max(0, Math.min(100, player.energy));
 
-  // keep player on screen
+  // keep on screen
   player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
 
-  // move obstacles toward camera
+  // move obstacles
   for (let o of obstacles) {
     o.z += worldSpeed * 2;
   }
   obstacles = obstacles.filter(o => o.z < 1.2);
 
-  // spawn obstacles
   if (Math.random() < 0.04) spawnObstacle();
 
-  // update speed lines
+  // update lines
   for (let l of lines) {
     l.z += worldSpeed;
     if (l.z > 1) {
@@ -82,23 +82,25 @@ function update() {
       l.x = Math.random();
     }
   }
+
+  // SCORE grows with speed
+  score += worldSpeed * 10;
 }
 
-// ----- DRAW -----
+// DRAW
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // background gradient
+  // background
   let gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
   gradient.addColorStop(0, "#cfeeff");
   gradient.addColorStop(1, "#ffffff");
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // vanishing point
   let center = canvas.width / 2;
 
-  // ----- SPEED LINES (subtle flow) -----
+  // SPEED LINES
   for (let l of lines) {
     let x = center + (l.x - 0.5) * canvas.width * l.z;
     let y = 100 + (canvas.height - 100) * l.z;
@@ -111,7 +113,7 @@ function draw() {
     ctx.stroke();
   }
 
-  // ----- OBSTACLES (perspective scaling) -----
+  // OBSTACLES
   for (let o of obstacles) {
     let scale = 0.5 + Math.pow(o.z, 2) * 6;
     let x = center + (o.laneX - 0.5) * canvas.width * o.z;
@@ -122,36 +124,45 @@ function draw() {
     ctx.fillRect(x - size / 2, y - size / 2, size, size);
   }
 
-  // ----- ENERGY TRAIL -----
-  ctx.strokeStyle = player.boosting ? "orange" : "cyan";
-  ctx.lineWidth = player.boosting ? 6 : 3;
+  // 🔥 ENERGY TRAIL (layered glow)
+  for (let i = 0; i < 3; i++) {
+    ctx.strokeStyle = player.boosting
+      ? `rgba(255,140,0,${0.3 - i * 0.1})`
+      : `rgba(0,200,255,${0.3 - i * 0.1})`;
 
-  ctx.beginPath();
-  ctx.moveTo(player.x + player.width / 2, player.y);
-  ctx.lineTo(player.x + player.width / 2, player.y + 40);
-  ctx.stroke();
+    ctx.lineWidth = player.boosting ? 10 - i * 3 : 6 - i * 2;
 
-  // ----- PLAYER -----
+    ctx.beginPath();
+    ctx.moveTo(player.x + player.width / 2, player.y);
+    ctx.lineTo(player.x + player.width / 2, player.y + 50 + i * 10);
+    ctx.stroke();
+  }
+
+  // PLAYER
   ctx.fillStyle = "black";
   ctx.fillRect(player.x, player.y, player.width, player.height);
 
-  // ----- ENERGY BAR -----
+  // ENERGY BAR
   ctx.fillStyle = "black";
   ctx.fillRect(20, 40, 100, 10);
 
   ctx.fillStyle = player.boosting ? "orange" : "cyan";
   ctx.fillRect(20, 40, player.energy, 10);
 
-  // optional: speed readout
+  // SCORE
   ctx.fillStyle = "black";
-  ctx.font = "14px Arial";
-  ctx.fillText("Speed: " + worldSpeed.toFixed(4), 20, 30);
+  ctx.font = "18px Arial";
+  ctx.fillText("Score: " + Math.floor(score), 20, 70);
+
+  // SPEED
+  ctx.fillText("Speed: " + worldSpeed.toFixed(4), 20, 25);
 }
 
-// ----- LOOP -----
+// LOOP
 function gameLoop() {
   update();
   draw();
   requestAnimationFrame(gameLoop);
 }
+
 gameLoop();
