@@ -7,11 +7,24 @@ canvas.height = 600;
 let player = {
   x: 400,
   y: 300,
-  speed: 2
+  speed: 3
 };
 
+let keys = {};
+
+window.addEventListener("keydown", (e) => {
+  keys[e.key] = true;
+});
+
+window.addEventListener("keyup", (e) => {
+  keys[e.key] = false;
+});
+
 function update() {
-  player.x += player.speed;
+  if (keys["ArrowUp"]) player.y -= player.speed;
+  if (keys["ArrowDown"]) player.y += player.speed;
+  if (keys["ArrowLeft"]) player.x -= player.speed;
+  if (keys["ArrowRight"]) player.x += player.speed;
 }
 
 function draw() {
