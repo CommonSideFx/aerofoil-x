@@ -25,6 +25,10 @@ function update() {
   if (keys["ArrowDown"]) player.y += player.speed;
   if (keys["ArrowLeft"]) player.x -= player.speed;
   if (keys["ArrowRight"]) player.x += player.speed;
+
+  // Keep player inside screen
+  player.x = Math.max(0, Math.min(canvas.width - 20, player.x));
+  player.y = Math.max(0, Math.min(canvas.height - 20, player.y));
 }
 
 function draw() {
