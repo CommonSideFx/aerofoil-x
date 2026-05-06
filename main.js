@@ -1,11 +1,10 @@
-// ===== SETUP =====
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
 canvas.width = 800;
 canvas.height = 600;
 
-// PLAYER
+// ===== PLAYER =====
 let player = {
   x: canvas.width / 2,
   y: canvas.height - 110,
@@ -13,7 +12,10 @@ let player = {
   h: 14
 };
 
-// WORLD
+// ===== MOVEMENT =====
+let lateralVel = 0;
+
+// ===== WORLD =====
 let worldSpeed = 0.0015;
 let score = 0;
 let lives = 3;
@@ -21,24 +23,24 @@ let gameOver = false;
 
 let flowOffset = 0;
 
-// OBJECTS
+// ===== OBJECTS =====
 let obstacles = [];
 let drains = [];
 
 let portalCooldown = 0;
 
-// INPUT
+// ===== INPUT =====
 let keys = {};
 window.addEventListener("keydown", e => keys[e.key] = true);
 window.addEventListener("keyup", e => keys[e.key] = false);
 
 // ===== HELPERS =====
 function getFlowX(z) {
-  return Math.sin(flowOffset + z * 5) * 220; // MUCH wider now
+  return Math.sin(flowOffset + z * 5) * 220; // wide
 }
 
 function projectY(z) {
-  return 200 + (canvas.height - 200) * z; // less perspective squeeze
+  return 200 + (canvas.height - 200) * z;
 }
 
 // ===== SPAWN =====
@@ -68,10 +70,15 @@ function update() {
 
   if (portalCooldown > 0) portalCooldown--;
 
-  // movement
-  if (keys["ArrowLeft"]) player.x -= 4;
-  if (keys["ArrowRight"]) player.x += 4;
+  // ===== SURF CONTROL =====
+  if (keys["ArrowLeft"]) lateralVel -= 0.25;
+  if (keys["ArrowRight"]) lateralVel += 0.25;
 
+  lateralVel *= 0.92;
+
+  player.x += lateralVel;
+
+  // ===== SPEED =====
   if (keys["ArrowUp"]) worldSpeed += 0.0001;
   if (keys["ArrowDown"]) worldSpeed -= 0.0001;
 
@@ -81,21 +88,20 @@ function update() {
 
   let center = canvas.width / 2;
 
-  // center pull
-  let flowCenter = center + getFlowX(0.9);
-  player.x += (flowCenter - player.x) * 0.02;
+  // ===== FLOW DRIFT (THIS IS THE MAGIC) =====
+  let flowTarget = center + getFlowX(0.95);
+  player.x += (flowTarget - player.x) * 0.06;
 
   player.x = Math.max(0, Math.min(canvas.width - player.w, player.x));
 
-  // spawn
+  // ===== SPAWN =====
   if (Math.random() < 0.008) spawnObstacle();
   spawnDrain();
 
-  // update obstacles
+  // ===== UPDATE OBJECTS =====
   obstacles.forEach(o => o.z += worldSpeed * 1.8);
   obstacles = obstacles.filter(o => o.z < 1.2);
 
-  // update drains
   drains.forEach(d => d.z += worldSpeed * 1.5);
   drains = drains.filter(d => d.z < 1.2);
 
@@ -113,11 +119,12 @@ function update() {
     ) {
       lives--;
       player.x = center;
+
       if (lives <= 0) gameOver = true;
     }
   });
 
-  // ===== PORTALS (REAL EFFECT) =====
+  // ===== PORTALS =====
   drains.forEach(d => {
     let x = center + getFlowX(d.z);
     let y = projectY(d.z);
@@ -128,11 +135,9 @@ function update() {
       Math.abs(player.y - y) < 20
     ) {
       if (d.type === "boost") {
-        // jump forward in world
         flowOffset += 1.5;
         score += 200;
       } else {
-        // pull backward
         flowOffset -= 1;
         lives--;
       }
@@ -157,7 +162,7 @@ function draw() {
   ctx.fillStyle = "#eafaff";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // ===== CURB (WIDER) =====
+  // ===== CURBS (WIDE) =====
   ctx.strokeStyle = "#888";
   ctx.lineWidth = 3;
 
@@ -198,7 +203,7 @@ function draw() {
 
     for (let i = 0; i < 4; i++) {
       ctx.beginPath();
-      ctx.arc(x, y, 10 + i * 5, 0, Math.PI * 2);
+      ctx.arc(x, y, 10 + i * 5, d.spin || 0, Math.PI * 2);
       ctx.stroke();
     }
   });
@@ -217,7 +222,7 @@ function draw() {
   ctx.fillStyle = "black";
   ctx.fillRect(player.x, player.y, player.w, player.h);
 
-  // UI
+  // ===== UI =====
   ctx.fillStyle = "black";
   ctx.font = "16px Arial";
   ctx.fillText("Score: " + Math.floor(score), 20, 30);
@@ -243,10 +248,11 @@ function resetGame() {
   gameOver = false;
 }
 
-// LOOP
+// ===== LOOP =====
 function loop() {
   update();
   draw();
   requestAnimationFrame(loop);
 }
+
 loop();
