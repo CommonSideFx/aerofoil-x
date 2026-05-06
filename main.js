@@ -23,16 +23,12 @@ let fishCount = 0;
 let gameOver = false;
 
 let flowOffset = 0;
-
-// camera sway
-let cameraOffsetX = 0;
+let portalCooldown = 0;
 
 // ===== OBJECTS =====
 let obstacles = [];
 let drains = [];
 let fish = [];
-
-let portalCooldown = 0;
 
 // ===== INPUT =====
 let keys = {};
@@ -48,29 +44,35 @@ function projectY(z) {
   return 200 + (canvas.height - 200) * z;
 }
 
+function collide(px, py, pw, ph, ox, oy, size) {
+  return (
+    px < ox + size &&
+    px + pw > ox &&
+    py < oy + size &&
+    py + ph > oy
+  );
+}
+
 // ===== SPAWN =====
 function spawnObstacle() {
-  obstacles.push({ lane: Math.random(), z: 0.05, size: 5 });
+  if (Math.random() < 0.01) {
+    obstacles.push({ lane: Math.random(), z: 0.05 });
+  }
 }
 
 function spawnDrain() {
-  if (Math.random() < 0.002) {
+  if (Math.random() < 0.003) {
     drains.push({
-      z: 0.2,
-      type: Math.random() > 0.5 ? "boost" : "trap",
-      spin: 0
+      lane: Math.random(),
+      z: 0.1,
+      type: Math.random() > 0.5 ? "boost" : "trap"
     });
   }
 }
 
 function spawnFish() {
   if (Math.random() < 0.006) {
-    fish.push({
-      lane: Math.random(),
-      z: 0.05,
-      swimOffset: Math.random() * 100,
-      dir: Math.random() > 0.5 ? 1 : -1
-    });
+    fish.push({ lane: Math.random(), z: 0.05, swim: Math.random() * 10 });
   }
 }
 
@@ -83,14 +85,14 @@ function update() {
 
   if (portalCooldown > 0) portalCooldown--;
 
-  // ===== SURF CONTROL =====
+  // movement
   if (keys["ArrowLeft"]) lateralVel -= 0.25;
   if (keys["ArrowRight"]) lateralVel += 0.25;
 
   lateralVel *= 0.95;
   player.x += lateralVel;
 
-  // ===== SPEED =====
+  // speed
   if (keys["ArrowUp"]) worldSpeed += 0.0001;
   if (keys["ArrowDown"]) worldSpeed -= 0.0001;
 
@@ -100,61 +102,39 @@ function update() {
 
   let center = canvas.width / 2;
 
-  // ===== FLOW DRIFT =====
+  // flow drift
   let flowTarget = center + getFlowX(0.95);
   player.x += (flowTarget - player.x) * 0.04;
 
   player.x = Math.max(0, Math.min(canvas.width - player.w, player.x));
 
-  // ===== PLAYER TILT =====
+  // tilt
   player.tilt = lateralVel * 0.08;
 
-  // ===== CAMERA SWAY =====
-  cameraOffsetX = getFlowX(0.2) * 0.15;
-
-  // ===== SPAWN =====
-  if (Math.random() < 0.008) spawnObstacle();
+  // spawn
+  spawnObstacle();
   spawnDrain();
   spawnFish();
 
-  // ===== UPDATE OBJECTS =====
+  // update objects
   obstacles.forEach(o => o.z += worldSpeed * 1.8);
-  obstacles = obstacles.filter(o => o.z < 1.2);
-
-  drains.forEach(d => {
-    d.z += worldSpeed * 1.5;
-    d.spin += 0.1;
-  });
-  drains = drains.filter(d => d.z < 1.2);
-
+  drains.forEach(d => d.z += worldSpeed * 1.5);
   fish.forEach(f => {
     f.z += worldSpeed * 1.6;
-    f.swimOffset += 0.05 * f.dir;
-
-    let px = player.x;
-    let fx = center + getFlowX(f.z) + (f.lane - 0.5) * 300 * f.z;
-
-    if (Math.abs(px - fx) < 80) {
-      f.lane += (px < fx ? 0.01 : -0.01);
-    }
-
-    f.lane = Math.max(0.1, Math.min(0.9, f.lane));
+    f.swim += 0.1;
   });
 
+  obstacles = obstacles.filter(o => o.z < 1.2);
+  drains = drains.filter(d => d.z < 1.2);
   fish = fish.filter(f => f.z < 1.2);
 
   // ===== COLLISIONS =====
   obstacles.forEach(o => {
     let x = center + getFlowX(o.z) + (o.lane - 0.5) * 300 * o.z;
     let y = projectY(o.z);
-    let size = o.size * (0.5 + o.z * 4);
+    let size = 12;
 
-    if (
-      player.x < x + size &&
-      player.x + player.w > x &&
-      player.y < y + size &&
-      player.y + player.h > y
-    ) {
+    if (collide(player.x, player.y, player.w, player.h, x, y, size)) {
       lives--;
       player.x = center;
       if (lives <= 0) gameOver = true;
@@ -162,13 +142,12 @@ function update() {
   });
 
   drains.forEach(d => {
-    let x = center + getFlowX(d.z);
+    let x = center + getFlowX(d.z) + (d.lane - 0.5) * 300 * d.z;
     let y = projectY(d.z);
 
     if (
       portalCooldown === 0 &&
-      Math.abs(player.x - x) < 20 &&
-      Math.abs(player.y - y) < 20
+      collide(player.x, player.y, player.w, player.h, x, y, 14)
     ) {
       if (d.type === "boost") {
         flowOffset += 1.5;
@@ -178,7 +157,7 @@ function update() {
         lives--;
       }
 
-      portalCooldown = 40;
+      portalCooldown = 30;
       d.z = 2;
 
       if (lives <= 0) gameOver = true;
@@ -186,16 +165,10 @@ function update() {
   });
 
   fish.forEach(f => {
-    let x = center + getFlowX(f.z) + (f.lane - 0.5) * 300 * f.z;
+    let x = center + getFlowX(f.z) + (f.lane - 0.5) * 300 * f.z + Math.sin(f.swim) * 10;
     let y = projectY(f.z);
-    let size = 10 * (0.5 + f.z * 3);
 
-    if (
-      player.x < x + size &&
-      player.x + player.w > x &&
-      player.y < y + size &&
-      player.y + player.h > y
-    ) {
+    if (collide(player.x, player.y, player.w, player.h, x, y, 12)) {
       fishCount++;
       score += 100;
       f.z = 2;
@@ -209,15 +182,12 @@ function update() {
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  ctx.save();
-  ctx.translate(cameraOffsetX, 0);
-
   let center = canvas.width / 2;
 
   ctx.fillStyle = "#eafaff";
-  ctx.fillRect(-50, 0, canvas.width + 100, canvas.height);
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // CURB
+  // CURB (wide)
   ctx.strokeStyle = "#888";
   ctx.lineWidth = 3;
 
@@ -239,26 +209,61 @@ function draw() {
   }
   ctx.stroke();
 
-  // FISH
+  // obstacles
+  obstacles.forEach(o => {
+    let x = center + getFlowX(o.z) + (o.lane - 0.5) * 300 * o.z;
+    let y = projectY(o.z);
+
+    ctx.fillStyle = "#333";
+    ctx.fillRect(x, y, 12, 12);
+  });
+
+  // drains
+  drains.forEach(d => {
+    let x = center + getFlowX(d.z) + (d.lane - 0.5) * 300 * d.z;
+    let y = projectY(d.z);
+
+    ctx.strokeStyle = d.type === "boost" ? "green" : "red";
+    ctx.beginPath();
+    ctx.arc(x, y, 12, 0, Math.PI * 2);
+    ctx.stroke();
+  });
+
+  // fish
   fish.forEach(f => {
-    let x = center + getFlowX(f.z) + (f.lane - 0.5) * 300 * f.z + Math.sin(f.swimOffset) * 10;
+    let x = center + getFlowX(f.z) + (f.lane - 0.5) * 300 * f.z + Math.sin(f.swim) * 10;
     let y = projectY(f.z);
-    let size = 10 * (0.5 + f.z * 3);
 
     ctx.fillStyle = "orange";
     ctx.beginPath();
-    ctx.ellipse(x, y, size, size * 0.6, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, y, 10, 6, 0, 0, Math.PI * 2);
     ctx.fill();
   });
 
-  // PLAYER (LEAN)
+  // energy trail
+  ctx.strokeStyle = "rgba(0,200,255,0.4)";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+
+  for (let i = 0; i < 10; i++) {
+    let t = i / 10;
+    let z = 0.9 + t * 0.1;
+
+    let x = player.x + player.w/2 + (getFlowX(z) - getFlowX(0.95));
+    let y = player.y + t * (40 + worldSpeed * 6000);
+
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+
+  ctx.stroke();
+
+  // player (tilt)
   ctx.save();
   ctx.translate(player.x + player.w/2, player.y + player.h/2);
   ctx.rotate(player.tilt);
   ctx.fillStyle = "black";
   ctx.fillRect(-player.w/2, -player.h/2, player.w, player.h);
-  ctx.restore();
-
   ctx.restore();
 
   // UI
