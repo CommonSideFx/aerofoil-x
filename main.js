@@ -1,3 +1,4 @@
+// ===== SETUP =====
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
@@ -8,15 +9,9 @@ canvas.height = 600;
 let player = {
   x: canvas.width / 2,
   y: canvas.height - 110,
-  w: 16,
-  h: 16,
-  speed: 4
+  w: 14,
+  h: 14
 };
-
-// INPUT
-let keys = {};
-window.addEventListener("keydown", e => keys[e.key] = true);
-window.addEventListener("keyup", e => keys[e.key] = false);
 
 // WORLD
 let worldSpeed = 0.0015;
@@ -32,22 +27,18 @@ let drains = [];
 
 let portalCooldown = 0;
 
+// INPUT
+let keys = {};
+window.addEventListener("keydown", e => keys[e.key] = true);
+window.addEventListener("keyup", e => keys[e.key] = false);
+
 // ===== HELPERS =====
 function getFlowX(z) {
-  return Math.sin(flowOffset + z * 5) * 180; // MUCH wider curve
+  return Math.sin(flowOffset + z * 5) * 220; // MUCH wider now
 }
 
 function projectY(z) {
-  return 180 + (canvas.height - 180) * z;
-}
-
-function checkCollision(px, py, pw, ph, ox, oy, os) {
-  return (
-    px < ox + os &&
-    px + pw > ox &&
-    py < oy + os &&
-    py + ph > oy
-  );
+  return 200 + (canvas.height - 200) * z; // less perspective squeeze
 }
 
 // ===== SPAWN =====
@@ -62,21 +53,10 @@ function spawnObstacle() {
 function spawnDrain() {
   if (Math.random() < 0.002) {
     drains.push({
-      z: 0.1,
+      z: 0.2,
       type: Math.random() > 0.5 ? "boost" : "trap"
     });
   }
-}
-
-// ===== RESET =====
-function resetGame() {
-  player.x = canvas.width / 2;
-  worldSpeed = 0.0015;
-  score = 0;
-  lives = 3;
-  obstacles = [];
-  drains = [];
-  gameOver = false;
 }
 
 // ===== UPDATE =====
@@ -89,10 +69,9 @@ function update() {
   if (portalCooldown > 0) portalCooldown--;
 
   // movement
-  if (keys["ArrowLeft"]) player.x -= player.speed;
-  if (keys["ArrowRight"]) player.x += player.speed;
+  if (keys["ArrowLeft"]) player.x -= 4;
+  if (keys["ArrowRight"]) player.x += 4;
 
-  // speed
   if (keys["ArrowUp"]) worldSpeed += 0.0001;
   if (keys["ArrowDown"]) worldSpeed -= 0.0001;
 
@@ -102,7 +81,7 @@ function update() {
 
   let center = canvas.width / 2;
 
-  // keep player centered in flow
+  // center pull
   let flowCenter = center + getFlowX(0.9);
   player.x += (flowCenter - player.x) * 0.02;
 
@@ -120,22 +99,25 @@ function update() {
   drains.forEach(d => d.z += worldSpeed * 1.5);
   drains = drains.filter(d => d.z < 1.2);
 
-  // collisions: obstacles
+  // ===== COLLISION =====
   obstacles.forEach(o => {
-    let x = center + getFlowX(o.z) + (o.lane - 0.5) * 240 * o.z;
+    let x = center + getFlowX(o.z) + (o.lane - 0.5) * 300 * o.z;
     let y = projectY(o.z);
     let size = o.size * (0.5 + o.z * 4);
 
-    if (checkCollision(player.x, player.y, player.w, player.h, x - size/2, y - size/2, size)) {
+    if (
+      player.x < x + size &&
+      player.x + player.w > x &&
+      player.y < y + size &&
+      player.y + player.h > y
+    ) {
       lives--;
-      player.x = canvas.width / 2;
-      worldSpeed *= 0.7;
-
+      player.x = center;
       if (lives <= 0) gameOver = true;
     }
   });
 
-  // collisions: drains (SAFE)
+  // ===== PORTALS (REAL EFFECT) =====
   drains.forEach(d => {
     let x = center + getFlowX(d.z);
     let y = projectY(d.z);
@@ -146,13 +128,16 @@ function update() {
       Math.abs(player.y - y) < 20
     ) {
       if (d.type === "boost") {
-        worldSpeed *= 1.4;
+        // jump forward in world
+        flowOffset += 1.5;
+        score += 200;
       } else {
+        // pull backward
+        flowOffset -= 1;
         lives--;
-        worldSpeed *= 0.7;
       }
 
-      portalCooldown = 40; // prevents freeze
+      portalCooldown = 40;
       d.z = 2;
 
       if (lives <= 0) gameOver = true;
@@ -172,31 +157,31 @@ function draw() {
   ctx.fillStyle = "#eafaff";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // ===== WIDE CURB =====
+  // ===== CURB (WIDER) =====
   ctx.strokeStyle = "#888";
   ctx.lineWidth = 3;
 
   ctx.beginPath();
-  ctx.moveTo(center - 140, 180);
+  ctx.moveTo(center - 180, 200);
   for (let z = 0; z < 1; z += 0.02) {
     let x = center + getFlowX(z);
     let y = projectY(z);
-    ctx.lineTo(x - 140 * z, y);
+    ctx.lineTo(x - 180 * z, y);
   }
   ctx.stroke();
 
   ctx.beginPath();
-  ctx.moveTo(center + 140, 180);
+  ctx.moveTo(center + 180, 200);
   for (let z = 0; z < 1; z += 0.02) {
     let x = center + getFlowX(z);
     let y = projectY(z);
-    ctx.lineTo(x + 140 * z, y);
+    ctx.lineTo(x + 180 * z, y);
   }
   ctx.stroke();
 
   // ===== OBSTACLES =====
   obstacles.forEach(o => {
-    let x = center + getFlowX(o.z) + (o.lane - 0.5) * 240 * o.z;
+    let x = center + getFlowX(o.z) + (o.lane - 0.5) * 300 * o.z;
     let y = projectY(o.z);
     let size = o.size * (0.5 + o.z * 4);
 
@@ -204,23 +189,35 @@ function draw() {
     ctx.fillRect(x - size/2, y - size/2, size, size);
   });
 
-  // ===== DRAINS =====
+  // ===== PORTALS =====
   drains.forEach(d => {
     let x = center + getFlowX(d.z);
     let y = projectY(d.z);
 
     ctx.strokeStyle = d.type === "boost" ? "green" : "red";
 
-    ctx.beginPath();
-    ctx.arc(x, y, 12, 0, Math.PI * 2);
-    ctx.stroke();
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath();
+      ctx.arc(x, y, 10 + i * 5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
   });
+
+  // ===== ENERGY TRAIL =====
+  let trailLength = 40 + worldSpeed * 8000;
+
+  ctx.strokeStyle = "rgba(0,200,255,0.4)";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(player.x + player.w/2, player.y);
+  ctx.lineTo(player.x + player.w/2, player.y + trailLength);
+  ctx.stroke();
 
   // PLAYER
   ctx.fillStyle = "black";
   ctx.fillRect(player.x, player.y, player.w, player.h);
 
-  // ===== UI (FORCED LAST = NEVER DISAPPEARS) =====
+  // UI
   ctx.fillStyle = "black";
   ctx.font = "16px Arial";
   ctx.fillText("Score: " + Math.floor(score), 20, 30);
@@ -235,11 +232,21 @@ function draw() {
   }
 }
 
+// ===== RESET =====
+function resetGame() {
+  player.x = canvas.width / 2;
+  worldSpeed = 0.0015;
+  score = 0;
+  lives = 3;
+  obstacles = [];
+  drains = [];
+  gameOver = false;
+}
+
 // LOOP
 function loop() {
   update();
   draw();
   requestAnimationFrame(loop);
 }
-
 loop();
