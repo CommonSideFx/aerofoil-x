@@ -26,6 +26,11 @@ let worldSpeed = 0.0015;
 let score = 0;
 let gameOver = false;
 
+// 3 lives system
+let lives = 3;
+let respawnTimer = 0;
+
+// flow
 let flowOffset = 0;
 let terrainOffset = 0;
 
@@ -39,16 +44,17 @@ let obstacleTypes = ["butt","paper","trash"];
 
 // ===== DRAINS (PORTALS) =====
 let drains = [];
+let portalCooldown = 0; // prevents repeated triggering
 
-// ===== CURRENT LANES (gentle) =====
+// ===== CURRENT LANES =====
 let lanes = [
-  {offset: -0.35, strength: 0.35},
-  {offset:  0.35, strength: -0.35}
+  {offset: -0.35, strength: 0.3},
+  {offset:  0.35, strength: -0.3}
 ];
 
 // ===== HELPERS =====
 function getFlowX(z){
-  return Math.sin(flowOffset + z*5) * 130; // wider stream
+  return Math.sin(flowOffset + z*5) * 150; // wider
 }
 
 function getTerrainY(z){
@@ -56,7 +62,7 @@ function getTerrainY(z){
 }
 
 function projectY(z){
-  return 160 + (canvas.height - 160) * z; // closer camera
+  return 160 + (canvas.height - 160) * z;
 }
 
 function checkCollision(px,py,pw,ph, ox,oy,os){
@@ -82,10 +88,32 @@ function spawnDrain(){
   }
 }
 
+function hitPlayer(x, y){
+  lives--;
+  player.hitTimer = 12;
+  respawnTimer = 25; // short pause
+
+  // push player to safe center
+  player.x = canvas.width / 2;
+
+  // splash
+  splashes.push({x, y, life: 24});
+
+  if(lives <= 0){
+    gameOver = true;
+  }
+}
+
 // ===== UPDATE =====
 function update(){
   if(gameOver){
     if(keys["Enter"]) resetGame();
+    return;
+  }
+
+  // short freeze after hit
+  if(respawnTimer > 0){
+    respawnTimer--;
     return;
   }
 
@@ -116,16 +144,16 @@ function update(){
 
   let center = canvas.width/2;
 
-  // gentle current lanes (don’t overpower)
+  // current lanes
   lanes.forEach(l=>{
-    let laneX = center + l.offset*220;
+    let laneX = center + l.offset*240;
     let d = player.x - laneX;
-    if(Math.abs(d) < 90){
+    if(Math.abs(d) < 100){
       player.x += l.strength;
     }
   });
 
-  // follow stream slightly
+  // follow stream
   let flowCenter = center + getFlowX(0.9);
   player.x += (flowCenter - player.x)*0.015;
 
@@ -147,38 +175,40 @@ function update(){
   });
   drains = drains.filter(d=> d.z < 1.2);
 
+  // cooldown
+  if(portalCooldown > 0) portalCooldown--;
+
   // collisions: obstacles
   obstacles.forEach(o=>{
-    let x = center + getFlowX(o.z) + (o.lane-0.5)*160*o.z;
+    let x = center + getFlowX(o.z) + (o.lane-0.5)*180*o.z;
     let y = projectY(o.z) + getTerrainY(o.z);
     let size = o.size * (0.6 + o.z*4);
 
     if(checkCollision(player.x, player.y, player.w, player.h, x-size/2, y-size/2, size)){
-      player.hitTimer = 10;
-      player.energy -= 20;
-      worldSpeed *= 0.7;
-      splashes.push({x,y,life:18});
+      hitPlayer(x, y);
     }
   });
 
-  // collisions: drains (portals)
+  // collisions: drains (safe one-shot)
   drains.forEach(d=>{
     let x = center + getFlowX(d.z);
     let y = projectY(d.z) + getTerrainY(d.z);
 
-    if(Math.abs(player.x - x) < 18 && Math.abs(player.y - y) < 18){
+    if(portalCooldown === 0 &&
+       Math.abs(player.x - x) < 18 &&
+       Math.abs(player.y - y) < 18){
+
       if(d.type === "boost"){
-        worldSpeed *= 1.5; // forward feel
+        worldSpeed *= 1.4;
       } else {
-        worldSpeed *= 0.65; // setback feel
+        worldSpeed *= 0.7;
+        hitPlayer(x, y); // trap costs a life
       }
-      d.z = 2; // consume
-      splashes.push({x,y,life:24});
+
+      d.z = 2;
+      portalCooldown = 30; // prevent re-trigger
     }
   });
-
-  if(player.hitTimer>0) player.hitTimer--;
-  if(player.energy<=0) gameOver = true;
 
   // streaks
   streaks.forEach(s=>{
@@ -206,78 +236,61 @@ function draw(){
   ctx.fillStyle = g;
   ctx.fillRect(0,0,canvas.width,canvas.height);
 
-  // ===== PATH CURBS (restored) =====
+  // curbs (wider)
   ctx.strokeStyle = "#888";
   ctx.lineWidth = 3;
 
-  // left curb
   ctx.beginPath();
   let sx = center + getFlowX(0);
   let sy = projectY(0) + getTerrainY(0);
-  ctx.moveTo(sx-80, sy);
+  ctx.moveTo(sx-100, sy);
   for(let z=0; z<1; z+=0.02){
     let x = center + getFlowX(z);
     let y = projectY(z) + getTerrainY(z);
-    ctx.lineTo(x - 80*z, y);
+    ctx.lineTo(x - 100*z, y);
   }
   ctx.stroke();
 
-  // right curb
   ctx.beginPath();
-  ctx.moveTo(sx+80, sy);
+  ctx.moveTo(sx+100, sy);
   for(let z=0; z<1; z+=0.02){
     let x = center + getFlowX(z);
     let y = projectY(z) + getTerrainY(z);
-    ctx.lineTo(x + 80*z, y);
+    ctx.lineTo(x + 100*z, y);
   }
   ctx.stroke();
 
-  // ===== FLOW STREAKS =====
-  streaks.forEach(s=>{
-    let x = center + getFlowX(s.z) + (s.x-0.5)*140*s.z;
-    let y = projectY(s.z) + getTerrainY(s.z);
-    ctx.strokeStyle = "rgba(0,0,0,0.05)";
-    ctx.beginPath();
-    ctx.moveTo(x,y);
-    ctx.lineTo(x,y+12+s.z*18);
-    ctx.stroke();
-  });
-
-  // ===== DRAINS (grate + swirl) =====
+  // drains
   drains.forEach(d=>{
     let x = center + getFlowX(d.z);
     let y = projectY(d.z) + getTerrainY(d.z);
 
     ctx.strokeStyle = d.type==="boost" ? "green" : "red";
 
-    // swirl arcs
     for(let i=0;i<3;i++){
       ctx.beginPath();
       ctx.arc(x,y,10+i*4, d.spin, d.spin+Math.PI*1.5);
       ctx.stroke();
     }
 
-    // grate lines
+    // grate
     ctx.beginPath();
     ctx.moveTo(x-10,y); ctx.lineTo(x+10,y);
     ctx.moveTo(x,y-10); ctx.lineTo(x,y+10);
     ctx.stroke();
   });
 
-  // ===== OBSTACLES =====
+  // obstacles
   obstacles.forEach(o=>{
-    let x = center + getFlowX(o.z) + (o.lane-0.5)*160*o.z;
+    let x = center + getFlowX(o.z) + (o.lane-0.5)*180*o.z;
     let y = projectY(o.z) + getTerrainY(o.z);
     let size = o.size * (0.6 + o.z*4);
 
-    if(o.type==="butt") ctx.fillStyle="#c2a36b";
-    else if(o.type==="paper") ctx.fillStyle="#fff";
-    else ctx.fillStyle="#333";
-
+    ctx.fillStyle = o.type==="paper" ? "#fff" : "#333";
     ctx.fillRect(x-size/2,y-size/2,size,size);
   });
 
-  // ===== SPLASHES =====
+  // splashes
   splashes.forEach(s=>{
     ctx.fillStyle="rgba(0,150,255,0.4)";
     ctx.beginPath();
@@ -285,7 +298,7 @@ function draw(){
     ctx.fill();
   });
 
-  // ===== BOOST TRAIL (restored) =====
+  // trail
   for(let i=0;i<3;i++){
     ctx.strokeStyle = player.boosting
       ? `rgba(255,140,0,${0.3 - i*0.1})`
@@ -297,21 +310,16 @@ function draw(){
     ctx.stroke();
   }
 
-  // ===== PLAYER (black square restored) =====
+  // player
   ctx.fillStyle = player.hitTimer>0 ? "red" : "black";
   ctx.fillRect(player.x, player.y, player.w, player.h);
 
-  // ===== UI =====
-  ctx.fillStyle="black";
-  ctx.fillRect(20,40,100,10);
-
-  ctx.fillStyle=player.boosting ? "orange":"cyan";
-  ctx.fillRect(20,40,player.energy,10);
-
+  // UI
   ctx.fillStyle="black";
   ctx.font="16px Arial";
   ctx.fillText("Score: "+Math.floor(score),20,30);
-  ctx.fillText("Speed: "+worldSpeed.toFixed(4),20,60);
+  ctx.fillText("Speed: "+worldSpeed.toFixed(4),20,55);
+  ctx.fillText("Lives: "+lives,20,80);
 
   if(gameOver){
     ctx.font="28px Arial";
@@ -329,6 +337,7 @@ function resetGame(){
   obstacles = [];
   drains = [];
   splashes = [];
+  lives = 3;
   gameOver = false;
 }
 
