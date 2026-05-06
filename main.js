@@ -7,9 +7,9 @@ canvas.height = 600;
 // PLAYER
 let player = {
   x: canvas.width / 2,
-  y: canvas.height - 100,
-  width: 14,
-  height: 14,
+  y: canvas.height - 110,
+  width: 16,
+  height: 16,
   speed: 4,
   energy: 100,
   boosting: false,
@@ -29,8 +29,49 @@ let gameOver = false;
 let flowOffset = 0;
 let terrainOffset = 0;
 
+// 🌊 CURRENT LANES
+let lanes = [
+  { offset: -0.3, strength: 0.6 },
+  { offset: 0.3, strength: -0.6 }
+];
+
+// 🌊 FLOW STREAKS
+let streaks = Array.from({ length: 40 }).map(() => ({
+  x: Math.random(),
+  z: Math.random()
+}));
+
 // 🌀 DRAINS
 let drains = [];
+
+// OBSTACLES
+let obstacles = [];
+let types = ["butt", "paper", "trash"];
+
+// EFFECTS
+let splashes = [];
+
+// HELPERS
+function getFlowX(z) {
+  return Math.sin(flowOffset + z * 5) * 140; // wider
+}
+
+function getTerrainY(z) {
+  return Math.sin(terrainOffset + z * 4) * 25;
+}
+
+function projectY(z) {
+  return 180 + (canvas.height - 180) * z; // closer camera
+}
+
+function spawnObstacle() {
+  obstacles.push({
+    x: Math.random(),
+    z: 0.05,
+    type: types[Math.floor(Math.random() * 3)],
+    size: 6
+  });
+}
 
 function spawnDrain() {
   if (Math.random() < 0.003) {
@@ -42,42 +83,8 @@ function spawnDrain() {
   }
 }
 
-// OBSTACLES
-let obstacleTypes = ["butt", "paper", "trash"];
-let obstacles = [];
-
-function spawnObstacle() {
-  obstacles.push({
-    x: Math.random(),
-    z: 0.05,
-    type: obstacleTypes[Math.floor(Math.random() * 3)],
-    size: 6 // smaller = more dodgeable
-  });
-}
-
-// EFFECTS
-let splashes = [];
-
-// HELPERS
-function getFlowX(z) {
-  return Math.sin(flowOffset + z * 5) * 120; // wider path
-}
-
-function getTerrainY(z) {
-  return Math.sin(terrainOffset + z * 4) * 30;
-}
-
-function projectY(z) {
-  return 140 + (canvas.height - 140) * z;
-}
-
 function checkCollision(px, py, pw, ph, ox, oy, os) {
-  return (
-    px < ox + os &&
-    px + pw > ox &&
-    py < oy + os &&
-    py + ph > oy
-  );
+  return px < ox+os && px+pw > ox && py < oy+os && py+ph > oy;
 }
 
 // UPDATE
@@ -87,15 +94,18 @@ function update() {
     return;
   }
 
+  // steering
   if (keys["ArrowLeft"]) player.x -= player.speed;
   if (keys["ArrowRight"]) player.x += player.speed;
 
+  // throttle
   if (keys["ArrowUp"]) worldSpeed += 0.0001;
   if (keys["ArrowDown"]) worldSpeed -= 0.0001;
 
+  // boost
   if (keys["Shift"] && player.energy > 0) {
     player.boosting = true;
-    worldSpeed += 0.0005;
+    worldSpeed += 0.0006;
     player.energy -= 1;
   } else {
     player.boosting = false;
@@ -110,9 +120,19 @@ function update() {
 
   let center = canvas.width / 2;
 
-  // stay in stream
+  // 🌊 CURRENT FORCE (this is the magic)
+  lanes.forEach(lane => {
+    let laneX = center + lane.offset * 200;
+    let dist = player.x - laneX;
+
+    if (Math.abs(dist) < 80) {
+      player.x += lane.strength;
+    }
+  });
+
+  // flow pull
   let flowCenter = center + getFlowX(0.9);
-  player.x += (flowCenter - player.x) * 0.02;
+  player.x += (flowCenter - player.x) * 0.015;
 
   player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
 
@@ -131,40 +151,39 @@ function update() {
   });
   drains = drains.filter(d => d.z < 1.2);
 
-  // COLLISION (obstacles)
+  // collisions
   obstacles.forEach(o => {
-    let x = center + getFlowX(o.z) + (o.x - 0.5) * 140 * o.z;
+    let x = center + getFlowX(o.z) + (o.x - 0.5) * 160 * o.z;
     let y = projectY(o.z) + getTerrainY(o.z);
     let size = o.size * (0.5 + o.z * 4);
 
-    if (checkCollision(player.x, player.y, player.width, player.height, x - size/2, y - size/2, size)) {
+    if (checkCollision(player.x, player.y, player.width, player.height, x-size/2, y-size/2, size)) {
       player.hitTimer = 10;
       player.energy -= 20;
       worldSpeed *= 0.7;
-
       splashes.push({ x, y, life: 20 });
     }
   });
 
-  // COLLISION (drains)
   drains.forEach(d => {
     let x = center + getFlowX(d.z);
     let y = projectY(d.z) + getTerrainY(d.z);
 
     if (Math.abs(player.x - x) < 20 && Math.abs(player.y - y) < 20) {
-      if (d.type === "boost") {
-        worldSpeed *= 1.4;
-      } else {
-        worldSpeed *= 0.6;
-      }
-      d.z = 2; // remove after hit
+      worldSpeed *= d.type === "boost" ? 1.4 : 0.6;
+      d.z = 2;
     }
   });
 
-  if (player.hitTimer > 0) player.hitTimer--;
-  if (player.energy <= 0) gameOver = true;
+  // streaks
+  streaks.forEach(s => {
+    s.z += worldSpeed;
+    if (s.z > 1) {
+      s.z = 0;
+      s.x = Math.random();
+    }
+  });
 
-  // splash decay
   splashes.forEach(s => s.life--);
   splashes = splashes.filter(s => s.life > 0);
 
@@ -184,27 +203,19 @@ function draw() {
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // CURB
-  ctx.strokeStyle = "#888";
-  ctx.lineWidth = 3;
+  // 🌊 FLOW STREAKS
+  streaks.forEach(s => {
+    let x = center + getFlowX(s.z) + (s.x - 0.5) * 140 * s.z;
+    let y = projectY(s.z) + getTerrainY(s.z);
 
-  ctx.beginPath();
-  for (let z = 0; z < 1; z += 0.02) {
-    let x = center + getFlowX(z);
-    let y = projectY(z) + getTerrainY(z);
-    ctx.lineTo(x - 80 * z, y);
-  }
-  ctx.stroke();
+    ctx.strokeStyle = "rgba(0,0,0,0.05)";
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x, y + 10 + s.z * 20);
+    ctx.stroke();
+  });
 
-  ctx.beginPath();
-  for (let z = 0; z < 1; z += 0.02) {
-    let x = center + getFlowX(z);
-    let y = projectY(z) + getTerrainY(z);
-    ctx.lineTo(x + 80 * z, y);
-  }
-  ctx.stroke();
-
-  // DRAINS
+  // 🌀 DRAINS
   drains.forEach(d => {
     let x = center + getFlowX(d.z);
     let y = projectY(d.z) + getTerrainY(d.z);
@@ -220,15 +231,12 @@ function draw() {
 
   // OBSTACLES
   obstacles.forEach(o => {
-    let x = center + getFlowX(o.z) + (o.x - 0.5) * 140 * o.z;
+    let x = center + getFlowX(o.z) + (o.x - 0.5) * 160 * o.z;
     let y = projectY(o.z) + getTerrainY(o.z);
     let size = o.size * (0.5 + o.z * 4);
 
-    if (o.type === "butt") ctx.fillStyle = "#c2a36b";
-    else if (o.type === "paper") ctx.fillStyle = "#fff";
-    else ctx.fillStyle = "#333";
-
-    ctx.fillRect(x - size/2, y - size/2, size, size);
+    ctx.fillStyle = o.type === "paper" ? "#fff" : "#333";
+    ctx.fillRect(x-size/2, y-size/2, size, size);
   });
 
   // SPLASH
@@ -239,42 +247,15 @@ function draw() {
     ctx.fill();
   });
 
-  // TRAIL
-  for (let i = 0; i < 3; i++) {
-    ctx.strokeStyle = player.boosting
-      ? `rgba(255,140,0,${0.3 - i * 0.1})`
-      : `rgba(0,200,255,${0.3 - i * 0.1})`;
-
-    ctx.lineWidth = 6 - i * 2;
-
-    ctx.beginPath();
-    ctx.moveTo(player.x + player.width/2, player.y);
-    ctx.lineTo(player.x + player.width/2, player.y + 40 + i * 10);
-    ctx.stroke();
-  }
-
   // PLAYER
   ctx.fillStyle = player.hitTimer > 0 ? "red" : "black";
   ctx.fillRect(player.x, player.y, player.width, player.height);
 
   // UI
   ctx.fillStyle = "black";
-  ctx.fillRect(20, 40, 100, 10);
-
-  ctx.fillStyle = player.boosting ? "orange" : "cyan";
-  ctx.fillRect(20, 40, player.energy, 10);
-
-  ctx.fillStyle = "black";
   ctx.font = "16px Arial";
   ctx.fillText("Score: " + Math.floor(score), 20, 30);
   ctx.fillText("Speed: " + worldSpeed.toFixed(4), 20, 55);
-
-  if (gameOver) {
-    ctx.font = "28px Arial";
-    ctx.fillText("GAME OVER", canvas.width/2 - 90, canvas.height/2);
-    ctx.font = "16px Arial";
-    ctx.fillText("Press Enter to Restart", canvas.width/2 - 110, canvas.height/2 + 30);
-  }
 }
 
 // RESET
