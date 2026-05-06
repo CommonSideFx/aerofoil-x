@@ -9,7 +9,8 @@ let player = {
   x: canvas.width / 2,
   y: canvas.height - 110,
   w: 14,
-  h: 14
+  h: 14,
+  tilt: 0
 };
 
 let lateralVel = 0;
@@ -18,9 +19,13 @@ let lateralVel = 0;
 let worldSpeed = 0.0015;
 let score = 0;
 let lives = 3;
+let fishCount = 0;
 let gameOver = false;
 
 let flowOffset = 0;
+
+// camera sway
+let cameraOffsetX = 0;
 
 // ===== OBJECTS =====
 let obstacles = [];
@@ -101,6 +106,12 @@ function update() {
 
   player.x = Math.max(0, Math.min(canvas.width - player.w, player.x));
 
+  // ===== PLAYER TILT =====
+  player.tilt = lateralVel * 0.08;
+
+  // ===== CAMERA SWAY =====
+  cameraOffsetX = getFlowX(0.2) * 0.15;
+
   // ===== SPAWN =====
   if (Math.random() < 0.008) spawnObstacle();
   spawnDrain();
@@ -116,14 +127,10 @@ function update() {
   });
   drains = drains.filter(d => d.z < 1.2);
 
-  // ===== FISH BEHAVIOR =====
   fish.forEach(f => {
     f.z += worldSpeed * 1.6;
-
-    // swim side to side
     f.swimOffset += 0.05 * f.dir;
 
-    // react to player (avoid)
     let px = player.x;
     let fx = center + getFlowX(f.z) + (f.lane - 0.5) * 300 * f.z;
 
@@ -131,7 +138,6 @@ function update() {
       f.lane += (px < fx ? 0.01 : -0.01);
     }
 
-    // clamp lane
     f.lane = Math.max(0.1, Math.min(0.9, f.lane));
   });
 
@@ -190,8 +196,8 @@ function update() {
       player.y < y + size &&
       player.y + player.h > y
     ) {
+      fishCount++;
       score += 100;
-      worldSpeed += 0.0002;
       f.z = 2;
     }
   });
@@ -203,12 +209,15 @@ function update() {
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+  ctx.save();
+  ctx.translate(cameraOffsetX, 0);
+
   let center = canvas.width / 2;
 
   ctx.fillStyle = "#eafaff";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(-50, 0, canvas.width + 100, canvas.height);
 
-  // ===== CURBS =====
+  // CURB
   ctx.strokeStyle = "#888";
   ctx.lineWidth = 3;
 
@@ -230,7 +239,7 @@ function draw() {
   }
   ctx.stroke();
 
-  // ===== FISH =====
+  // FISH
   fish.forEach(f => {
     let x = center + getFlowX(f.z) + (f.lane - 0.5) * 300 * f.z + Math.sin(f.swimOffset) * 10;
     let y = projectY(f.z);
@@ -242,52 +251,15 @@ function draw() {
     ctx.fill();
   });
 
-  // ===== OBSTACLES =====
-  obstacles.forEach(o => {
-    let x = center + getFlowX(o.z) + (o.lane - 0.5) * 300 * o.z;
-    let y = projectY(o.z);
-    let size = o.size * (0.5 + o.z * 4);
-
-    ctx.fillStyle = "#333";
-    ctx.fillRect(x - size/2, y - size/2, size, size);
-  });
-
-  // ===== PORTALS =====
-  drains.forEach(d => {
-    let x = center + getFlowX(d.z);
-    let y = projectY(d.z);
-
-    ctx.strokeStyle = d.type === "boost" ? "green" : "red";
-
-    for (let i = 0; i < 4; i++) {
-      ctx.beginPath();
-      ctx.arc(x, y, 10 + i * 5, d.spin, d.spin + Math.PI * 1.5);
-      ctx.stroke();
-    }
-  });
-
-  // ===== FLOWING TRAIL =====
-  ctx.strokeStyle = "rgba(0,200,255,0.4)";
-  ctx.lineWidth = 4;
-  ctx.beginPath();
-
-  let segments = 12;
-  for (let i = 0; i < segments; i++) {
-    let t = i / segments;
-    let z = 0.9 + t * 0.1;
-
-    let x = player.x + player.w/2 + (getFlowX(z) - getFlowX(0.95));
-    let y = player.y + t * (40 + worldSpeed * 6000);
-
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-
-  ctx.stroke();
-
-  // PLAYER
+  // PLAYER (LEAN)
+  ctx.save();
+  ctx.translate(player.x + player.w/2, player.y + player.h/2);
+  ctx.rotate(player.tilt);
   ctx.fillStyle = "black";
-  ctx.fillRect(player.x, player.y, player.w, player.h);
+  ctx.fillRect(-player.w/2, -player.h/2, player.w, player.h);
+  ctx.restore();
+
+  ctx.restore();
 
   // UI
   ctx.fillStyle = "black";
@@ -295,12 +267,11 @@ function draw() {
   ctx.fillText("Score: " + Math.floor(score), 20, 30);
   ctx.fillText("Speed: " + worldSpeed.toFixed(4), 20, 50);
   ctx.fillText("Lives: " + lives, 20, 70);
+  ctx.fillText("Fish: " + fishCount, 20, 90);
 
   if (gameOver) {
     ctx.font = "28px Arial";
     ctx.fillText("GAME OVER", canvas.width/2 - 90, canvas.height/2);
-    ctx.font = "16px Arial";
-    ctx.fillText("Press Enter to Restart", canvas.width/2 - 110, canvas.height/2 + 30);
   }
 }
 
@@ -310,13 +281,14 @@ function resetGame() {
   worldSpeed = 0.0015;
   score = 0;
   lives = 3;
+  fishCount = 0;
   obstacles = [];
   drains = [];
   fish = [];
   gameOver = false;
 }
 
-// ===== LOOP =====
+// LOOP
 function loop() {
   update();
   draw();
