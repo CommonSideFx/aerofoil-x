@@ -8,8 +8,8 @@ canvas.height = 600;
 let player = {
   x: canvas.width / 2,
   y: canvas.height - 100,
-  width: 16,
-  height: 16,
+  width: 14,
+  height: 14,
   speed: 4,
   energy: 100,
   boosting: false,
@@ -26,40 +26,49 @@ let worldSpeed = 0.0015;
 let score = 0;
 let gameOver = false;
 
-// FLOW + TERRAIN
 let flowOffset = 0;
 let terrainOffset = 0;
 
-// DRAIN
-let drainZ = 0.6;
+// 🌀 DRAINS
+let drains = [];
 
-// EFFECTS
-let splashes = [];
+function spawnDrain() {
+  if (Math.random() < 0.003) {
+    drains.push({
+      z: 0.2,
+      type: Math.random() > 0.5 ? "boost" : "trap",
+      spin: 0
+    });
+  }
+}
 
 // OBSTACLES
 let obstacleTypes = ["butt", "paper", "trash"];
 let obstacles = [];
-
-// HELPERS
-function getFlowX(z) {
-  return Math.sin(flowOffset + z * 5) * 100;
-}
-
-function getTerrainY(z) {
-  return Math.sin(terrainOffset + z * 4) * 35;
-}
-
-function projectY(z) {
-  return 140 + (canvas.height - 140) * z;
-}
 
 function spawnObstacle() {
   obstacles.push({
     x: Math.random(),
     z: 0.05,
     type: obstacleTypes[Math.floor(Math.random() * 3)],
-    size: 10
+    size: 6 // smaller = more dodgeable
   });
+}
+
+// EFFECTS
+let splashes = [];
+
+// HELPERS
+function getFlowX(z) {
+  return Math.sin(flowOffset + z * 5) * 120; // wider path
+}
+
+function getTerrainY(z) {
+  return Math.sin(terrainOffset + z * 4) * 30;
+}
+
+function projectY(z) {
+  return 140 + (canvas.height - 140) * z;
 }
 
 function checkCollision(px, py, pw, ph, ox, oy, os) {
@@ -78,15 +87,12 @@ function update() {
     return;
   }
 
-  // steering
   if (keys["ArrowLeft"]) player.x -= player.speed;
   if (keys["ArrowRight"]) player.x += player.speed;
 
-  // throttle
   if (keys["ArrowUp"]) worldSpeed += 0.0001;
   if (keys["ArrowDown"]) worldSpeed -= 0.0001;
 
-  // boost
   if (keys["Shift"] && player.energy > 0) {
     player.boosting = true;
     worldSpeed += 0.0005;
@@ -104,21 +110,30 @@ function update() {
 
   let center = canvas.width / 2;
 
-  // keep player in stream
+  // stay in stream
   let flowCenter = center + getFlowX(0.9);
   player.x += (flowCenter - player.x) * 0.02;
 
   player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
 
-  // spawn obstacles
-  if (Math.random() < 0.01) spawnObstacle();
+  // spawn
+  if (Math.random() < 0.008) spawnObstacle();
+  spawnDrain();
 
+  // update obstacles
   obstacles.forEach(o => o.z += worldSpeed * 1.8);
   obstacles = obstacles.filter(o => o.z < 1.2);
 
-  // collision
+  // update drains
+  drains.forEach(d => {
+    d.z += worldSpeed * 1.5;
+    d.spin += 0.1;
+  });
+  drains = drains.filter(d => d.z < 1.2);
+
+  // COLLISION (obstacles)
   obstacles.forEach(o => {
-    let x = center + getFlowX(o.z) + (o.x - 0.5) * 100 * o.z;
+    let x = center + getFlowX(o.z) + (o.x - 0.5) * 140 * o.z;
     let y = projectY(o.z) + getTerrainY(o.z);
     let size = o.size * (0.5 + o.z * 4);
 
@@ -131,15 +146,23 @@ function update() {
     }
   });
 
+  // COLLISION (drains)
+  drains.forEach(d => {
+    let x = center + getFlowX(d.z);
+    let y = projectY(d.z) + getTerrainY(d.z);
+
+    if (Math.abs(player.x - x) < 20 && Math.abs(player.y - y) < 20) {
+      if (d.type === "boost") {
+        worldSpeed *= 1.4;
+      } else {
+        worldSpeed *= 0.6;
+      }
+      d.z = 2; // remove after hit
+    }
+  });
+
   if (player.hitTimer > 0) player.hitTimer--;
   if (player.energy <= 0) gameOver = true;
-
-  // drain loop
-  drainZ += worldSpeed * 1.5;
-  if (drainZ > 1) {
-    drainZ = 0.2;
-    obstacles = [];
-  }
 
   // splash decay
   splashes.forEach(s => s.life--);
@@ -161,46 +184,43 @@ function draw() {
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // CURB EDGES
+  // CURB
   ctx.strokeStyle = "#888";
   ctx.lineWidth = 3;
 
   ctx.beginPath();
-  let startX = center + getFlowX(0);
-  let startY = projectY(0) + getTerrainY(0);
-  ctx.moveTo(startX - 60, startY);
-
   for (let z = 0; z < 1; z += 0.02) {
     let x = center + getFlowX(z);
     let y = projectY(z) + getTerrainY(z);
-    ctx.lineTo(x - 60 * z, y);
+    ctx.lineTo(x - 80 * z, y);
   }
   ctx.stroke();
 
   ctx.beginPath();
-  ctx.moveTo(startX + 60, startY);
-
   for (let z = 0; z < 1; z += 0.02) {
     let x = center + getFlowX(z);
     let y = projectY(z) + getTerrainY(z);
-    ctx.lineTo(x + 60 * z, y);
+    ctx.lineTo(x + 80 * z, y);
   }
   ctx.stroke();
 
-  // DRAIN
-  let dx = center + getFlowX(drainZ);
-  let dy = projectY(drainZ) + getTerrainY(drainZ);
+  // DRAINS
+  drains.forEach(d => {
+    let x = center + getFlowX(d.z);
+    let y = projectY(d.z) + getTerrainY(d.z);
 
-  ctx.strokeStyle = "rgba(0,0,0,0.3)";
-  for (let i = 0; i < 3; i++) {
-    ctx.beginPath();
-    ctx.arc(dx, dy, 10 + i * 6, 0, Math.PI * 2);
-    ctx.stroke();
-  }
+    ctx.strokeStyle = d.type === "boost" ? "green" : "red";
+
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath();
+      ctx.arc(x, y, 8 + i * 4, d.spin, d.spin + Math.PI * 1.5);
+      ctx.stroke();
+    }
+  });
 
   // OBSTACLES
   obstacles.forEach(o => {
-    let x = center + getFlowX(o.z) + (o.x - 0.5) * 100 * o.z;
+    let x = center + getFlowX(o.z) + (o.x - 0.5) * 140 * o.z;
     let y = projectY(o.z) + getTerrainY(o.z);
     let size = o.size * (0.5 + o.z * 4);
 
@@ -211,7 +231,7 @@ function draw() {
     ctx.fillRect(x - size/2, y - size/2, size, size);
   });
 
-  // SPLASHES
+  // SPLASH
   splashes.forEach(s => {
     ctx.fillStyle = "rgba(0,150,255,0.4)";
     ctx.beginPath();
@@ -219,7 +239,7 @@ function draw() {
     ctx.fill();
   });
 
-  // BOOST TRAIL
+  // TRAIL
   for (let i = 0; i < 3; i++) {
     ctx.strokeStyle = player.boosting
       ? `rgba(255,140,0,${0.3 - i * 0.1})`
@@ -263,8 +283,8 @@ function resetGame() {
   worldSpeed = 0.0015;
   score = 0;
   obstacles = [];
+  drains = [];
   splashes = [];
-  drainZ = 0.6;
   gameOver = false;
 }
 
